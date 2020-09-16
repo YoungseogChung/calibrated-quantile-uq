@@ -6,79 +6,49 @@ import numpy as np
 import pickle as pkl
 import tqdm
 import torch
-from fetch_data import get_uci_data, get_fusion_data
-from misc_utils import test_uq, set_seeds, gather_loss_per_q
+from data.fetch_data import get_uci_data, get_fusion_data
+from utils.misc_utils import test_uq, set_seeds, gather_loss_per_q
 from recal import iso_recal
 from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
 
-sys.path.append('NNKit/')
-from NNKit.models.model import vanilla_nn
+# sys.path.append('NNKit/')
+# from NNKit.models.model import vanilla_nn
+from utils.q_model_ens import QModelEns
 from losses import cali_loss, batch_cali_loss, qr_loss, batch_qr_loss, \
     mod_cali_loss, batch_mod_cali_loss, crps_loss, cov_loss, \
     interval_loss, batch_interval_loss
 
 
-class QModelEns(object):
+def get_loss_fn(loss_name):
+    if loss_name == 'cal':
+        loss_fn = cali_loss
+    elif loss_name == 'scaled_cal':
+        loss_fn = scaled_cali_loss
+    elif loss_name == 'qr':
+        loss_fn = qr_loss
+    elif loss_name == 'batch_cal':
+        loss_fn = batch_cali_loss
+    elif loss_name == 'scaled_batch_cal':
+        loss_fn = scaled_batch_cali_loss
+    elif loss_name == 'batch_qr':
+        loss_fn = batch_qr_loss
+    elif loss_name == 'mod_cal':
+        loss_fn = mod_cali_loss
+    elif loss_name == 'batch_mod_cal':
+        loss_fn = batch_mod_cali_loss
+    elif loss_name == 'cov':
+        loss_fn = cov_loss
+    elif loss_name == 'batch_crps':
+        loss_fn = crps_loss
+    elif loss_name == 'int':
+        loss_fn = interval_loss
+    elif loss_name == 'batch_int':
+        loss_fn = batch_interval_loss
+    else:
+        raise ValueError('loss arg not valid')
 
-    def __init__(self, input_size, output_size, hidden_size, num_layers, lr, wd,
-                 num_ens, device):
-
-        self.num_ens = num_ens
-        self.device = device
-        self.model = [vanilla_nn(input_size=input_size, output_size=output_size,
-                                 hidden_size=hidden_size,
-                                 num_layers=num_layers).to(device)
-                      for _ in range(num_ens)]
-        self.optimizers = [torch.optim.Adam(x.parameters(),
-                                            lr=lr, weight_decay=wd)
-                           for x in self.model]
-        self.keep_training = [True for _ in range(num_ens)]
-        self.best_va_loss = [np.inf for _ in range(num_ens)]
-        self.best_va_model = [None for _ in range(num_ens)]
-        self.best_va_ep = [0 for _ in range(num_ens)]
-        self.done_training = False
-
-    def loss(self, loss_fn, x, y, q_list, batch_q, take_step, args):
-        ens_loss = []
-        for idx in range(self.num_ens):
-            self.optimizers[idx].zero_grad()
-            if self.keep_training[idx]:
-                if batch_q:
-                    loss = loss_fn(self.model[idx], y, x, q_list, self.device, args)
-                else:
-                    loss = gather_loss_per_q(loss_fn, self.model[idx], y, x,
-                                             q_list, self.device, args)
-                ens_loss.append(loss.item())
-
-                if take_step:
-                    loss.backward()
-                    self.optimizers[idx].step()
-            else:
-                ens_loss.append(np.nan)
-
-        return np.asarray(ens_loss)
-
-    def update_va_loss(self, x, y, q_list, batch_q, curr_ep, num_wait, args):
-        with torch.no_grad():
-            va_loss = self.loss(loss_fn, x, y, q_list, batch_q, take_step=False, args=args)
-
-        for idx in range(self.num_ens):
-            if self.keep_training[idx]:
-                if va_loss[idx] < self.best_va_loss[idx]:
-                    self.best_va_loss[idx] = va_loss[idx]
-                    self.best_va_ep[idx] = curr_ep
-                    self.best_va_model[idx] = deepcopy(self.model[idx])
-                else:
-                    if curr_ep - self.best_va_ep[idx] > num_wait:
-                        print('Val loss stagnate for {}, model {}'.format(num_wait, idx))
-                        print('EP {}'.format(curr_ep))
-                        self.keep_training[idx] = False
-
-        if not any(self.keep_training):
-            self.done_training = True
-
-        return va_loss
+    return loss_fn
 
 
 def parse_args():
@@ -86,6 +56,8 @@ def parse_args():
 
     parser.add_argument('--num_ens', type=int, default=1,
                         help='number of members in ensemble')
+    parser.add_argument('--boot', type=int, default=0,
+                        help='1 to bootstrap samples')
 
     parser.add_argument('--seed', type=int,
                         help='random seed')
@@ -119,8 +91,6 @@ def parse_args():
 
     parser.add_argument('--loss', type=str, default='ours',
                         help='specify type of loss')
-    parser.add_argument('--scale', type=int, default=0,
-                        help='1 to scale loss, only adheres to cal losses')
     parser.add_argument('--recal', type=int, default=1,
                         help='1 to recalibrate afterwards')
 
@@ -132,10 +102,14 @@ def parse_args():
 
     args = parser.parse_args()
 
+    args.boot = bool(args.boot)
     args.epist = bool(args.epist)
-    args.scale = bool(args.scale)
     args.recal = bool(args.recal)
     args.debug = bool(args.debug)
+
+    if args.boot:
+        if not args.num_ens > 1:
+            raise RuntimeError('num_ens must be above > 1 for bootstrap')
 
     os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
     device_name = 'cuda:0' if torch.cuda.is_available() else 'cpu'
@@ -147,11 +121,12 @@ def parse_args():
 
 if __name__ == '__main__':
     DATA_NAMES = \
-        ['wine-quality-red', 'naval-propulsion-plant', 'kin8nm', 'energy',
-         'yacht', 'concrete', 'power-plant', 'bostonHousing']
+        ['wine', 'naval', 'kin8nm', 'energy', 'yacht', 'concrete', 'power', 'boston']
     SEEDS = [0,1,2,3,4]
 
     args = parse_args()
+
+    print('DEVICE: {}'.format(args.device))
 
     if args.debug:
         import pudb; pudb.set_trace()
@@ -164,19 +139,19 @@ if __name__ == '__main__':
             args.data = d
             args.seed = s
 
-            """ Save file name """
-            save_file_name = '{}/{}_loss{}_seed{}_ens{}_scale{}.pkl'.format(
-                args.save_dir, args.data, args.loss, args.seed, args.num_ens,
-                args.scale)
+            # Save file name
+            save_file_name = '{}/{}_loss{}_epist{}_ens{}_boot{}_seed{}.pkl'.format(
+                args.save_dir, 
+                args.data, args.loss, args.epist, args.num_ens, args.boot, args.seed)
             if os.path.exists(save_file_name):
                 print('skipping {}'.format(save_file_name))
                 continue
                 sys.exit()
 
+            # Set seeds
             set_seeds(args.seed)
-            print('DEVICE: {}'.format(args.device))
 
-            """ Fetching data """
+            # Fetching data 
             data_args = Namespace(data_dir=args.data_dir, dataset=args.data,
                                   seed=args.seed)
             if 'uci' in args.data_dir.lower():
@@ -193,12 +168,13 @@ if __name__ == '__main__':
                 temp_x_tr, temp_y_tr = deepcopy(x_tr), deepcopy(y_tr)
                 x_tr, y_tr = x_te, y_te
                 x_te, y_te = temp_x_tr, temp_y_tr
-                assert (x_tr.size(0) < x_te.size(0)) and (y_tr.size(0) < y_te.size(0))
+                assert (x_tr.shape[0]) < x_te.shape[0])) and (y_tr.shape[0]) < y_te.shape[0]))
 
 
-            """ Making models """
-            dim_x = x_tr.size(1)
-            dim_y = y_tr.size(1)
+            # Making models
+            num_tr = x_tr.shape[0]
+            dim_x = x_tr.shape[1]
+            dim_y = y_tr.shape[1]
 
             model_ens = QModelEns(input_size=dim_x+1, output_size=dim_y,
                                   hidden_size=args.hs, num_layers=args.nl, 
@@ -211,33 +187,23 @@ if __name__ == '__main__':
             # optimizer = torch.optim.Adam(model.parameters(),
             #                              lr=args.lr, weight_decay=args.wd)
 
-            loader = DataLoader(TensorDataset(x_tr, y_tr),
-                                shuffle=True,
-                                batch_size=args.bs)
-
-            if args.loss == 'cal':
-                loss_fn = cali_loss
-            elif args.loss == 'qr':
-                loss_fn = qr_loss
-            elif args.loss == 'batch_cal':
-                loss_fn = batch_cali_loss
-            elif args.loss == 'batch_qr':
-                loss_fn = batch_qr_loss
-            elif args.loss == 'mod_cal':
-                loss_fn = mod_cali_loss
-            elif args.loss == 'batch_mod_cal':
-                loss_fn = batch_mod_cali_loss
-            elif args.loss == 'cov':
-                loss_fn = cov_loss
-            elif args.loss == 'batch_crps':
-                loss_fn = crps_loss
-            elif args.loss == 'int':
-                loss_fn = interval_loss
-            elif args.loss == 'batch_int':
-                loss_fn = batch_interval_loss
+            # Data loader 
+            if not args.boot:
+                loader = DataLoader(TensorDataset(x_tr, y_tr),
+                                    shuffle=True,
+                                    batch_size=args.bs)
             else:
-                raise ValueError('loss arg not valid')
+                rand_idx_list = [
+                    np.random.choice(num_tr, size=num_tr, replace=True)
+                    for _ in range(args.num_ens)]
+                loader_list = [DataLoader(TensorDataset(x_tr[idxs], y_tr[idxs]),
+                                          shuffle=True, batch_size=args.batch)
+                               for idxs in rand_idx_list]
+
+            # Loss function
+            loss_fn = get_loss_fn(args.loss)
             batch_loss = True if 'batch' in args.loss else False
+
 
             """ train loop """
             tr_loss_list = []
@@ -250,18 +216,29 @@ if __name__ == '__main__':
                 if model_ens.done_training:
                     print('Done training ens at EP {}'.format(ep))
                     break
-
-                ep_train_loss = []
-                for (xi, yi) in loader:
-                    xi, yi = xi.to(args.device), yi.to(args.device)
-                    q_list = torch.rand(args.num_q)
-                    loss = model_ens.loss(loss_fn, xi, yi, q_list, batch_q=batch_loss,
-                                          take_step=True, args=args)
-                    ep_train_loss.append(loss)
+                
+                # Take train step
+                ep_train_loss = []  # list of losses from each batch, for one epoch
+                if not args.boot:
+                    for (xi, yi) in loader:
+                        xi, yi = xi.to(args.device), yi.to(args.device)
+                        q_list = torch.rand(args.num_q)
+                        loss = model_ens.loss(loss_fn, xi, yi, q_list, batch_q=batch_loss,
+                                              take_step=True, args=args)
+                        ep_train_loss.append(loss)
+                else: 
+                    for xi_yi_samp in zip(*loader_list):
+                        xi_list = [item[0].to(args.device) for item in xi_yi_samp]
+                        yi_list = [item[1].to(args.device) for item in xi_yi_samp]
+                        assert len(xi_list) == len(yi_list) == args.num_ens
+                        q_list = torch.rand(args.num_q)
+                        loss = model_ens.loss_boot(loss_fn, xi_list, yi_list, q_list, batch_q=batch_loss,
+                                              take_step=True, args=args)
+                        ep_train_loss.append(loss)
                 ep_tr_loss = np.nanmean(np.stack(ep_train_loss, axis=0), axis=0)
                 tr_loss_list.append(ep_tr_loss)
 
-                """ get val loss """
+                # Validation loss
                 x_va, y_va = x_va.to(args.device), y_va.to(args.device)
                 va_te_q_list = torch.linspace(0.01, 0.99, 99)
 
@@ -270,7 +247,7 @@ if __name__ == '__main__':
                                          num_wait=args.wait, args=args)
                 va_loss_list.append(ep_va_loss)
 
-                """ get test loss """
+                # Test los
                 x_te, y_te = x_te.to(args.device), y_te.to(args.device)
                 with torch.no_grad():
                     ep_te_loss = model_ens.loss(loss_fn, x_te, y_te, va_te_q_list,
