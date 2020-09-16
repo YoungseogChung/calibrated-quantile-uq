@@ -247,7 +247,7 @@ if __name__ == '__main__':
                                          num_wait=args.wait, args=args)
                 va_loss_list.append(ep_va_loss)
 
-                # Test los
+                # Test loss
                 x_te, y_te = x_te.to(args.device), y_te.to(args.device)
                 with torch.no_grad():
                     ep_te_loss = model_ens.loss(loss_fn, x_te, y_te, va_te_q_list,
