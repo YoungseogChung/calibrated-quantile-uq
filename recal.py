@@ -9,13 +9,12 @@ def iso_recal(exp_props, obs_props):
     min_obs = torch.min(obs_props)
     max_obs = torch.max(obs_props)
 
-    iso_model = IsotonicRegression()
+    iso_model = IsotonicRegression(increasing=True, out_of_bounds='clip')
     try:
         assert torch.min(obs_props) == 0.0
         assert torch.max(obs_props) == 1.0
     except:
-        print('Obs props not ideal: from {} to {}'.format(
-            torch.min(obs_props), torch.max(obs_props)))
+        print('Obs props not ideal: from {} to {}'.format(min_obs, max_obs))
     # just need observed prop values between 0 and 1
     # problematic if min_obs_p > 0 and max_obs_p < 1
 
@@ -41,7 +40,7 @@ def iso_recal(exp_props, obs_props):
     elif torch.sum((within_01 == min_obs_within).float()) == 1:
         beg_idx = torch.argmin(within_01) + exp_0_idx
     else:
-        import pdb; pdb.set_trace()
+        import pudb; pudb.set_trace()
 
     # handle end_idx
     max_obs_above = torch.max(obs_props[exp_1_idx+1:])
@@ -50,17 +49,17 @@ def iso_recal(exp_props, obs_props):
         i = exp_1_idx + 1
         while obs_props[i] < max_obs_above:
             i += 1
-        end_idx = i
+        end_idx = i+1
     elif torch.sum((within_01 == max_obs_within).float()) > 1:
         # multiple minima in within_01 ==> get last min idx
         i = beg_idx
         while obs_props[i] < max_obs_within:
             i += 1
-        end_idx = i
+        end_idx = i+1
     elif torch.sum((within_01 == max_obs_within).float()) == 1:
-        end_idx = torch.argmax(within_01) + exp_0_idx
+        end_idx = exp_0_idx + torch.argmax(within_01) + 1
     else:
-        import pdb; pdb.set_trace()
+        import pudb; pudb.set_trace()
 
     assert end_idx > beg_idx
 
@@ -87,6 +86,16 @@ def iso_recal(exp_props, obs_props):
     try:
         iso_model = iso_model.fit(filtered_obs_props, filtered_exp_props)
     except:
-        import pdb; pdb.set_trace()
+        import pudb; pudb.set_trace()
 
     return iso_model
+
+if __name__ == '__main__':
+    exp = torch.linspace(-0.5, 1.5, 200)
+    from copy import deepcopy
+    obs = deepcopy(exp)
+    obs[:80] = 0
+    obs[-80:] = 1
+
+    iso_recal(exp, obs)
+
