@@ -26,14 +26,22 @@ def get_q_idx(exp_props, q):
 
 def test_uq(model, x, y, exp_props, y_range, recal_model=None, recal_type=None,
             make_plots=False):
-    # obs_props, quantile_preds = get_props(model, x, y, exp_props=exp_props,
-    #                                       recal_model=recal_model,
-    #                                       recal_type=recal_type)
-    obs_props, quantile_preds, quantile_preds_mat = \
-        ens_get_props(model, x, y, exp_props=exp_props, recal_model=recal_model,
-                      recal_type=recal_type)
 
-    assert exp_props.size() == obs_props.size()
+    # obs_props, quantile_preds, quantile_preds_mat = \
+    #     ens_get_props(model, x, y, exp_props=exp_props, recal_model=recal_model,
+    #                   recal_type=recal_type)
+
+    num_pts = x.shape[0]
+    y = y.detach().cpu().reshape(num_pts, -1)
+
+    # of shape (num_pts, num_q)
+    quantile_preds = model.predict_q(
+        x, exp_props, ens_pred_type='conf',
+        recal_model=recal_model, recal_type=recal_type
+    )
+    obs_props = torch.sum((quantile_preds >= y).float(), dim=1).flatten()
+
+    assert exp_props.shape == obs_props.shape
 
     idx_01 = get_q_idx(exp_props, 0.01)
     idx_99 = get_q_idx(exp_props, 0.99)
@@ -42,8 +50,8 @@ def test_uq(model, x, y, exp_props, y_range, recal_model=None, recal_type=None,
                                         make_plots=make_plots)
 
     order = torch.argsort(y.flatten())
-    q_025 = quantile_preds[get_q_idx(exp_props, 0.025)][order]
-    q_975 = quantile_preds[get_q_idx(exp_props, 0.975)][order]
+    q_025 = quantile_preds[:, get_q_idx(exp_props, 0.025)][order]
+    q_975 = quantile_preds[:, get_q_idx(exp_props, 0.975)][order]
     sharp_score = torch.mean(q_975 - q_025).item() / y_range
 
     if make_plots:
@@ -54,7 +62,7 @@ def test_uq(model, x, y, exp_props, y_range, recal_model=None, recal_type=None,
         plt.title('Mean Width: {:.3f}'.format(sharp_score))
         plt.show()
 
-    return cali_score, sharp_score, obs_props, quantile_preds, quantile_preds_mat
+    return cali_score, sharp_score, obs_props, quantile_preds
 
 
 def gather_loss_per_q(loss_fn, model, y, x, q_list, device, args):

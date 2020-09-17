@@ -274,7 +274,7 @@ def cov_loss(model, y, x, q, device, args):
     return loss
 
 
-def interval_loss(model, y, x, q, device, scale):
+def interval_loss(model, y, x, q, device, args):
     """
     implementation of interval score
     
@@ -307,8 +307,8 @@ def interval_loss(model, y, x, q, device, scale):
     above_u = (y.view(-1) - pred_u).gt(0)
 
     loss = (pred_u - pred_l) + \
-           (1/lower) * (pred_l - y.view(-1)) * below_l + \
-           (1/lower) * (y.view(-1) - pred_u) * above_u
+           (1.0/lower) * (pred_l - y.view(-1)) * below_l + \
+           (1.0/lower) * (y.view(-1) - pred_u) * above_u
 
     return torch.mean(loss)
 
@@ -346,8 +346,8 @@ def batch_interval_loss(model, y, x, q_list, device, args):
     above_u = (y.view(-1) - pred_u).gt(0)
 
     loss = (pred_u - pred_l) + \
-           (1/l_list).view(-1, 1).to(device) * (pred_l - y.view(-1)) * below_l + \
-           (1 / l_list).view(-1, 1).to(device) * (y.view(-1) - pred_u) * above_u
+           (1.0/l_list).view(-1, 1).to(device) * (pred_l - y.view(-1)) * below_l + \
+           (1.0/ l_list).view(-1, 1).to(device) * (y.view(-1) - pred_u) * above_u
 
     return torch.mean(loss)
 

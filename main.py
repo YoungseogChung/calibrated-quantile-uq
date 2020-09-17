@@ -21,34 +21,30 @@ from losses import cali_loss, batch_cali_loss, qr_loss, batch_qr_loss, \
 
 
 def get_loss_fn(loss_name):
-    if loss_name == 'cal':
-        loss_fn = cali_loss
-    elif loss_name == 'scaled_cal':
-        loss_fn = scaled_cali_loss
-    elif loss_name == 'qr':
-        loss_fn = qr_loss
-    elif loss_name == 'batch_cal':
-        loss_fn = batch_cali_loss
-    elif loss_name == 'scaled_batch_cal':
-        loss_fn = scaled_batch_cali_loss
+    if loss_name == 'qr':
+        fn = qr_loss
     elif loss_name == 'batch_qr':
-        loss_fn = batch_qr_loss
-    elif loss_name == 'mod_cal':
-        loss_fn = mod_cali_loss
-    elif loss_name == 'batch_mod_cal':
-        loss_fn = batch_mod_cali_loss
+        fn = batch_qr_loss
+    elif loss_name in ['cal', 'scaled_cal']:
+        fn = cali_loss
+    elif loss_name in ['batch_cal', 'scaled_batch_cal']:
+        fn = batch_cali_loss
+    elif loss_name in ['mod_cal', 'scaled_mod_cal']:
+        fn = mod_cali_loss
+    elif loss_name in ['batch_mod_cal', 'scaled_batch_mod_cal']:
+        fn = batch_mod_cali_loss
     elif loss_name == 'cov':
-        loss_fn = cov_loss
+        fn = cov_loss
     elif loss_name == 'batch_crps':
-        loss_fn = crps_loss
+        fn = crps_loss
     elif loss_name == 'int':
-        loss_fn = interval_loss
+        fn = interval_loss
     elif loss_name == 'batch_int':
-        loss_fn = batch_interval_loss
+        fn = batch_interval_loss
     else:
         raise ValueError('loss arg not valid')
 
-    return loss_fn
+    return fn
 
 
 def parse_args():
@@ -168,8 +164,7 @@ if __name__ == '__main__':
                 temp_x_tr, temp_y_tr = deepcopy(x_tr), deepcopy(y_tr)
                 x_tr, y_tr = x_te, y_te
                 x_te, y_te = temp_x_tr, temp_y_tr
-                assert (x_tr.shape[0]) < x_te.shape[0])) and (y_tr.shape[0]) < y_te.shape[0]))
-
+                assert ((x_tr.shape[0]) < x_te.shape[0]) and ((y_tr.shape[0]) < y_te.shape[0])
 
             # Making models
             num_tr = x_tr.shape[0]
@@ -202,8 +197,9 @@ if __name__ == '__main__':
 
             # Loss function
             loss_fn = get_loss_fn(args.loss)
+            if 'scaled' in args.loss:
+                args.scale = True
             batch_loss = True if 'batch' in args.loss else False
-
 
             """ train loop """
             tr_loss_list = []
@@ -242,28 +238,34 @@ if __name__ == '__main__':
                 x_va, y_va = x_va.to(args.device), y_va.to(args.device)
                 va_te_q_list = torch.linspace(0.01, 0.99, 99)
 
-                ep_va_loss = model_ens.update_va_loss(x_va, y_va, va_te_q_list,
-                                         batch_q=batch_loss, curr_ep=ep,
-                                         num_wait=args.wait, args=args)
+                ep_va_loss = model_ens.update_va_loss(
+                    loss_fn, x_va, y_va, va_te_q_list,
+                    batch_q=batch_loss, curr_ep=ep, num_wait=args.wait,
+                    args=args
+                )
                 va_loss_list.append(ep_va_loss)
 
                 # Test loss
                 x_te, y_te = x_te.to(args.device), y_te.to(args.device)
                 with torch.no_grad():
-                    ep_te_loss = model_ens.loss(loss_fn, x_te, y_te, va_te_q_list,
-                                                batch_q=batch_loss, take_step=False,
-                                                args=args)
+                    ep_te_loss = model_ens.loss(
+                        loss_fn, x_te, y_te, va_te_q_list,
+                        batch_q=batch_loss, take_step=False,
+                        args=args
+                    )
                 te_loss_list.append(ep_te_loss)
 
-
-                if (ep % 50 == 0) or (ep == args.num_ep-1):
+                # Printing some losses
+                if (ep % 100 == 0) or (ep == args.num_ep-1):
                     print('EP:{}'.format(ep))
                     print('Train loss {}'.format(ep_tr_loss))
                     print('Val loss {}'.format(ep_va_loss))
                     print('Test loss {}'.format(ep_te_loss))
 
-            x_va, y_va, x_te, y_te = x_va.cpu(), y_va.cpu(), x_te.cpu(), y_te.cpu()
-
+            # Move everything to cpu
+            x_tr, y_tr, x_va, y_va, x_te, y_te = \
+                x_tr.cpu(), y_tr.cpu(), x_va.cpu(), y_va.cpu(), x_te.cpu(), y_te.cpu()
+            model_ens.use_device(torch.device('cpu'))
 
             # plt.plot(np.arange(len(tr_loss_list)) * 20, np.log(tr_loss_list), label='train')
             # plt.plot(np.arange(len(va_loss_list)) * 20, np.log(va_loss_list), label='val')
@@ -273,81 +275,81 @@ if __name__ == '__main__':
 
             """ Test UQ on train """
             print('Testing UQ on train')
-            tr_exp_props = torch.linspace(-3.0, 3.0, 600)
-            tr_cali_score, tr_sharp_score, tr_obs_props, tr_q_preds, tr_q_preds_mat = \
+            tr_exp_props = torch.linspace(0.01, 0.99, 99)
+            tr_cali_score, tr_sharp_score, tr_obs_props, tr_q_preds = \
                 test_uq(model_ens, x_tr, y_tr, tr_exp_props, y_range,
                         recal_model=None, recal_type=None)
 
             """ Test UQ on val """
             print('Testing UQ on val')
-            va_exp_props = torch.linspace(-5.0, 5.0, 600)
-            va_cali_score, va_sharp_score, va_obs_props, va_q_preds, va_q_preds_mat = \
+            va_exp_props = torch.linspace(-2.0, 3.0, 501)
+            va_cali_score, va_sharp_score, va_obs_props, va_q_preds = \
                 test_uq(model_ens, x_va, y_va, va_exp_props, y_range,
                         recal_model=None, recal_type=None)
 
             """Test UQ on test """
             print('Testing UQ on test')
-            te_exp_props = torch.linspace(-3.0, 3.0, 600)
-            te_cali_score, te_sharp_score, te_obs_props, te_q_preds, te_q_preds_mat = \
+            te_exp_props = torch.linspace(0.01, 0.99, 99)
+            te_cali_score, te_sharp_score, te_obs_props, te_q_preds = \
                 test_uq(model_ens, x_te, y_te, te_exp_props, y_range,
                         recal_model=None, recal_type=None)
 
             if args.recal:
                 recal_model = iso_recal(va_exp_props, va_obs_props)
 
-                exp_props = torch.linspace(0.01, 1.00, 101)
+                exp_props = torch.linspace(0.01, 0.99, 99)
                 recal_va_cali_score, recal_va_sharp_score, recal_va_obs_props, \
-                    recal_va_q_preds, recal_va_q_preds_mat = \
-                        test_uq(model_ens, x_va, y_va, exp_props, y_range,
-                                recal_model=recal_model, recal_type='sklearn')
+                recal_va_q_preds = \
+                    test_uq(model_ens, x_va, y_va, exp_props, y_range,
+                            recal_model=recal_model, recal_type='sklearn')
 
                 recal_te_cali_score, recal_te_sharp_score, recal_te_obs_props, \
-                    recal_te_q_preds, recal_te_q_preds_mat = \
-                        test_uq(model_ens, x_te, y_te, exp_props, y_range,
-                                recal_model=recal_model, recal_type='sklearn')
+                recal_te_q_preds = \
+                    test_uq(model_ens, x_te, y_te, exp_props, y_range,
+                            recal_model=recal_model, recal_type='sklearn')
 
-                recal_tr_cali_score, recal_tr_sharp_score, recal_tr_obs_props, \
-                    recal_tr_q_preds, recal_tr_q_preds_mat = \
-                        test_uq(model_ens, x_tr, y_tr, exp_props, y_range,
-                                recal_model=recal_model, recal_type='sklearn')
+                recal_tr_cali_score, recal_tr_sharp_score, recal_tr_obs_props,\
+                recal_tr_q_preds = \
+                    test_uq(model_ens, x_tr, y_tr, exp_props, y_range,
+                            recal_model=recal_model, recal_type='sklearn')
 
             save_dic = {
-                'tr_loss_list': tr_loss_list,
+                'tr_loss_list': tr_loss_list,    # loss lists
                 'va_loss_list': va_loss_list,
                 'te_loss_list': te_loss_list,
 
-                'tr_cali_score': tr_cali_score,
+                'tr_cali_score': tr_cali_score,   # test on tr
                 'tr_sharp_score': tr_sharp_score,
                 'tr_obs_props': tr_obs_props,
                 'tr_q_preds': tr_q_preds,
-                'tr_q_preds_mat': tr_q_preds_mat,
-                'va_cali_score': va_cali_score,
+
+                'va_cali_score': va_cali_score,   # test on va
                 'va_sharp_score': va_sharp_score,
                 'va_obs_props': va_obs_props,
                 'va_q_preds': va_q_preds,
-                'va_q_preds_mat': va_q_preds_mat,
-                'te_cali_score': te_cali_score,
+
+                'te_cali_score': te_cali_score,   # test on te
                 'te_sharp_score': te_sharp_score,
                 'te_obs_props': te_obs_props,
                 'te_q_preds': te_q_preds,
-                'te_q_preds_mat': te_q_preds_mat,
 
                 'recal_tr_cali_score': recal_tr_cali_score,
                 'recal_tr_sharp_score': recal_tr_sharp_score,
                 'recal_tr_obs_props': recal_tr_obs_props,
                 'recal_tr_q_preds': recal_tr_q_preds,
-                'recal_tr_q_preds_mat': recal_tr_q_preds_mat,
+
                 'recal_va_cali_score': recal_va_cali_score,
                 'recal_va_sharp_score': recal_va_sharp_score,
                 'recal_va_obs_props': recal_va_obs_props,
                 'recal_va_q_preds': recal_va_q_preds,
-                'recal_va_q_preds_mat': recal_va_q_preds_mat,
+
                 'recal_te_cali_score': recal_te_cali_score,
                 'recal_te_sharp_score': recal_te_sharp_score,
                 'recal_te_obs_props': recal_te_obs_props,
                 'recal_te_q_preds': recal_te_q_preds,
-                'recal_te_q_preds_mat': recal_te_q_preds_mat,
 
+                'x_va': x_va,
+                'y_va': y_va,
                 'x_te': x_te,
                 'y_te': y_te,
 

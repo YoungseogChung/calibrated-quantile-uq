@@ -1,4 +1,4 @@
-import sys
+import os, sys
 from copy import deepcopy
 import tqdm
 import numpy as np
@@ -18,16 +18,11 @@ All uq models will import this class
 """
 class uq_model(object):
 
-    def __call__(self):
-        raise NotImplementedError('Abstract Method')
-
     def predict(self):
         raise NotImplementedError('Abstract Method')
 
 
-
 """ QModelEns Utils """
-
 def gather_loss_per_q(loss_fn, model, y, x, q_list, device, args):
     loss_list = []
     for q in q_list:
@@ -36,6 +31,7 @@ def gather_loss_per_q(loss_fn, model, y, x, q_list, device, args):
     loss = torch.mean(torch.stack(loss_list))
 
     return loss
+
 
 def get_ens_pred_interp(unc_preds, taus, fidelity=10000):
     """
@@ -148,7 +144,6 @@ class QModelEns(uq_model):
             else:
                 device_list.append('cpu')
         print(device_list)
-
 
     def loss(self, loss_fn, x, y, q_list, batch_q, take_step, args):
         ens_loss = []
@@ -296,7 +291,7 @@ class QModelEns(uq_model):
             cdf_pred = self.predict(cdf_in)  # shape (num_x, 1)
             cdf_preds.append(cdf_pred)
 
-        pred_mat = torch.cat(cdf_preds, dim=1).numpy()  # shape (num_x, num_q)
+        pred_mat = torch.cat(cdf_preds, dim=1)  # shape (num_x, num_q)
         assert pred_mat.shape == (num_x, num_q)
         return pred_mat
 
