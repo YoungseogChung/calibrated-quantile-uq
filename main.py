@@ -71,21 +71,21 @@ def parse_args():
 
     parser.add_argument('--num_ep', type=int, default=10000,
                         help='number of epochs')
-    parser.add_argument('--nl', type=int, default=3,
+    parser.add_argument('--nl', type=int, default=2,
                         help='number of layers')
-    parser.add_argument('--hs', type=int, default=100,
+    parser.add_argument('--hs', type=int, default=64,
                         help='hidden size')
 
     parser.add_argument('--lr', type=float, default=1e-3,
                         help='learning rate')
     parser.add_argument('--wd', type=float, default=0.0,
                         help='weight decay')
-    parser.add_argument('--bs', type=int, default=2048,
+    parser.add_argument('--bs', type=int, default=64,
                         help='batch size')
     parser.add_argument('--wait', type=int, default=200,
                         help='how long to wait for lower validation loss')
 
-    parser.add_argument('--loss', type=str, default='ours',
+    parser.add_argument('--loss', type=str,
                         help='specify type of loss')
     parser.add_argument('--recal', type=int, default=1,
                         help='1 to recalibrate afterwards')
@@ -192,7 +192,7 @@ if __name__ == '__main__':
                     np.random.choice(num_tr, size=num_tr, replace=True)
                     for _ in range(args.num_ens)]
                 loader_list = [DataLoader(TensorDataset(x_tr[idxs], y_tr[idxs]),
-                                          shuffle=True, batch_size=args.batch)
+                                          shuffle=True, batch_size=args.bs)
                                for idxs in rand_idx_list]
 
             # Loss function
@@ -228,8 +228,10 @@ if __name__ == '__main__':
                         yi_list = [item[1].to(args.device) for item in xi_yi_samp]
                         assert len(xi_list) == len(yi_list) == args.num_ens
                         q_list = torch.rand(args.num_q)
-                        loss = model_ens.loss_boot(loss_fn, xi_list, yi_list, q_list, batch_q=batch_loss,
-                                              take_step=True, args=args)
+                        loss = model_ens.loss_boot(
+                            loss_fn, xi_list, yi_list, q_list,
+                            batch_q=batch_loss, take_step=True, args=args
+                        )
                         ep_train_loss.append(loss)
                 ep_tr_loss = np.nanmean(np.stack(ep_train_loss, axis=0), axis=0)
                 tr_loss_list.append(ep_tr_loss)
@@ -296,21 +298,21 @@ if __name__ == '__main__':
 
             if args.recal:
                 recal_model = iso_recal(va_exp_props, va_obs_props)
+                recal_exp_props = torch.linspace(0.01, 0.99, 99)
 
-                exp_props = torch.linspace(0.01, 0.99, 99)
                 recal_va_cali_score, recal_va_sharp_score, recal_va_obs_props, \
                 recal_va_q_preds = \
-                    test_uq(model_ens, x_va, y_va, exp_props, y_range,
+                    test_uq(model_ens, x_va, y_va, recal_exp_props, y_range,
                             recal_model=recal_model, recal_type='sklearn')
 
                 recal_te_cali_score, recal_te_sharp_score, recal_te_obs_props, \
                 recal_te_q_preds = \
-                    test_uq(model_ens, x_te, y_te, exp_props, y_range,
+                    test_uq(model_ens, x_te, y_te, recal_exp_props, y_range,
                             recal_model=recal_model, recal_type='sklearn')
 
                 recal_tr_cali_score, recal_tr_sharp_score, recal_tr_obs_props,\
                 recal_tr_q_preds = \
-                    test_uq(model_ens, x_tr, y_tr, exp_props, y_range,
+                    test_uq(model_ens, x_tr, y_tr, recal_exp_props, y_range,
                             recal_model=recal_model, recal_type='sklearn')
 
             save_dic = {
@@ -320,18 +322,24 @@ if __name__ == '__main__':
 
                 'tr_cali_score': tr_cali_score,   # test on tr
                 'tr_sharp_score': tr_sharp_score,
+                'tr_exp_props': tr_exp_props,
                 'tr_obs_props': tr_obs_props,
                 'tr_q_preds': tr_q_preds,
 
                 'va_cali_score': va_cali_score,   # test on va
                 'va_sharp_score': va_sharp_score,
+                'va_exp_props': va_exp_props,
                 'va_obs_props': va_obs_props,
                 'va_q_preds': va_q_preds,
 
                 'te_cali_score': te_cali_score,   # test on te
                 'te_sharp_score': te_sharp_score,
+                'te_exp_props': te_exp_props,
                 'te_obs_props': te_obs_props,
                 'te_q_preds': te_q_preds,
+
+                'recal_model': recal_model,
+                'recal_exp_props': recal_exp_props,
 
                 'recal_tr_cali_score': recal_tr_cali_score,
                 'recal_tr_sharp_score': recal_tr_sharp_score,
@@ -353,9 +361,13 @@ if __name__ == '__main__':
                 'x_te': x_te,
                 'y_te': y_te,
 
+                'args': args,
+
                 'model': model_ens
             }
 
             with open(save_file_name, 'wb') as pf:
                 pkl.dump(save_dic, pf)
+
+            sys.exit()
 

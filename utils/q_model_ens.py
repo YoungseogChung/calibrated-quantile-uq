@@ -129,6 +129,7 @@ class QModelEns(uq_model):
         self.done_training = False
 
     def use_device(self, device):
+        self.device = device
         for idx in range(len(self.best_va_model)):
             self.best_va_model[idx] = self.best_va_model[idx].to(device)
 

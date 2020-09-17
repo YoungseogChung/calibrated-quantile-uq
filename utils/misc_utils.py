@@ -15,8 +15,12 @@ def set_seeds(seed):
 def get_q_idx(exp_props, q):
     target_idx = None
     for idx, x in enumerate(exp_props):
+        if idx + 1 == exp_props.shape[0]:
+            if round(q, 2) == round(float(exp_props[-1]), 2):
+                target_idx = exp_props.shape[0] - 1
+            break
         if x <= q < exp_props[idx + 1]:
-            target_idx = idx+1
+            target_idx = idx
             break
     if target_idx is None:
         import pdb; pdb.set_trace()
@@ -34,12 +38,11 @@ def test_uq(model, x, y, exp_props, y_range, recal_model=None, recal_type=None,
     num_pts = x.shape[0]
     y = y.detach().cpu().reshape(num_pts, -1)
 
-    # of shape (num_pts, num_q)
     quantile_preds = model.predict_q(
         x, exp_props, ens_pred_type='conf',
         recal_model=recal_model, recal_type=recal_type
-    )
-    obs_props = torch.sum((quantile_preds >= y).float(), dim=1).flatten()
+    )  # of shape (num_pts, num_q)
+    obs_props = torch.mean((quantile_preds >= y).float(), dim=0).flatten()
 
     assert exp_props.shape == obs_props.shape
 
