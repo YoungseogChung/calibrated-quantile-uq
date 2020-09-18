@@ -58,7 +58,7 @@ def parse_args():
     parser.add_argument('--seed', type=int,
                         help='random seed')
     parser.add_argument('--data_dir', type=str, 
-                        default='/zfsauton/project/public/ysc/data_200_200',
+                        default='data/UCI_Datasets',
                         help='parent directory of datasets')
     parser.add_argument('--data', type=str,
                         help='dataset to use')
@@ -91,7 +91,7 @@ def parse_args():
                         help='1 to recalibrate afterwards')
 
     parser.add_argument('--save_dir', type=str, 
-                        default='/zfsauton/project/public/ysc/uq_fusion_env/results/',
+                        default='/zfsauton/project/public/ysc/uq_uci/all_default',
                         help='dir to save results')
     parser.add_argument('--debug', type=int, default=0,
                         help='1 to debug')
