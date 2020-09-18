@@ -137,7 +137,7 @@ if __name__ == '__main__':
 
             # Save file name
             save_file_name = '{}/{}_loss{}_epist{}_ens{}_boot{}_seed{}.pkl'.format(
-                args.save_dir, 
+                args.save_dir,
                 args.data, args.loss, args.epist, args.num_ens, args.boot, args.seed)
             if os.path.exists(save_file_name):
                 print('skipping {}'.format(save_file_name))
@@ -172,7 +172,7 @@ if __name__ == '__main__':
             dim_y = y_tr.shape[1]
 
             model_ens = QModelEns(input_size=dim_x+1, output_size=dim_y,
-                                  hidden_size=args.hs, num_layers=args.nl, 
+                                  hidden_size=args.hs, num_layers=args.nl,
                                   lr=args.lr, wd=args.wd,
                                   num_ens=args.num_ens, device=args.device)
             # model = vanilla_nn(input_size=dim_x + 1, output_size=dim_y,
@@ -197,8 +197,7 @@ if __name__ == '__main__':
 
             # Loss function
             loss_fn = get_loss_fn(args.loss)
-            if 'scaled' in args.loss:
-                args.scale = True
+            args.scale = True if 'scaled' in args.loss else False
             batch_loss = True if 'batch' in args.loss else False
 
             """ train loop """
@@ -212,7 +211,7 @@ if __name__ == '__main__':
                 if model_ens.done_training:
                     print('Done training ens at EP {}'.format(ep))
                     break
-                
+
                 # Take train step
                 ep_train_loss = []  # list of losses from each batch, for one epoch
                 if not args.boot:
@@ -222,7 +221,7 @@ if __name__ == '__main__':
                         loss = model_ens.loss(loss_fn, xi, yi, q_list, batch_q=batch_loss,
                                               take_step=True, args=args)
                         ep_train_loss.append(loss)
-                else: 
+                else:
                     for xi_yi_samp in zip(*loader_list):
                         xi_list = [item[0].to(args.device) for item in xi_yi_samp]
                         yi_list = [item[1].to(args.device) for item in xi_yi_samp]
@@ -310,7 +309,7 @@ if __name__ == '__main__':
                     test_uq(model_ens, x_te, y_te, recal_exp_props, y_range,
                             recal_model=recal_model, recal_type='sklearn')
 
-                recal_tr_cali_score, recal_tr_sharp_score, recal_tr_obs_props,\
+                recal_tr_cali_score, recal_tr_sharp_score, recal_tr_obs_props, \
                 recal_tr_q_preds = \
                     test_uq(model_ens, x_tr, y_tr, recal_exp_props, y_range,
                             recal_model=recal_model, recal_type='sklearn')
@@ -369,5 +368,4 @@ if __name__ == '__main__':
             with open(save_file_name, 'wb') as pf:
                 pkl.dump(save_dic, pf)
 
-            sys.exit()
 
