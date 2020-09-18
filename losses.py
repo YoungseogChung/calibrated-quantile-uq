@@ -29,7 +29,7 @@ def cali_loss(model, y, x, q, device, args):
     else:
         loss = torch.mean((pred_y - y)[idx_under])
 
-    if args.scale:
+    if hasattr(args, 'scale') and (args.scale):
         loss = torch.abs(q - coverage) * loss
 
     return loss
@@ -69,7 +69,7 @@ def batch_cali_loss(model, y, x, q_list, device, args):
     cov_under = coverage < q_list.to(device)
     cov_over = ~cov_under
 
-    if args.scale:
+    if hasattr(args, 'scale') and (args.scale):
         cov_diff = torch.abs(coverage - q_list.to(device)) 
         loss_list = (cov_diff * cov_under * mean_diff_over) + \
                     (cov_diff * cov_over * mean_diff_under)
@@ -105,7 +105,7 @@ def mod_cali_loss(model, y, x, q, device, args):
     else:
         loss = torch.mean(pred_y - y)
 
-    if args.scale:
+    if hasattr(args, 'scale') and (args.scale):
         loss = torch.abs(q - coverage) * loss
 
     return loss
@@ -149,7 +149,7 @@ def batch_mod_cali_loss(model, y, x, q_list, device, args):
     cov_under = coverage < q_list.to(device)
     cov_over = ~cov_under
 
-    if args.scale:
+    if hasattr(args, 'scale') and (args.scale):
         cov_diff = torch.abs(coverage - q_list.to(device)) 
         loss_list = (cov_diff * cov_under * mean_diff_over) + \
                     (cov_diff * cov_over * mean_diff_under)
