@@ -12,6 +12,7 @@ def cali_loss(model, y, x, q, device, args):
     q: scalar
     """
     num_pts = y.size(0)
+    q = float(q)
 
     if x is None:
         q_tensor = torch.Tensor([q]).to(device)
@@ -29,8 +30,28 @@ def cali_loss(model, y, x, q, device, args):
     else:
         loss = torch.mean((pred_y - y)[idx_under])
 
-    if hasattr(args, 'scale') and (args.scale):
+    if hasattr(args, 'scale') and args.scale:
         loss = torch.abs(q - coverage) * loss
+
+    if hasattr(args, 'sharp_penalty'):
+        import pudb; pudb.set_trace()
+        assert isinstance(args.sharp_penalty, float)
+
+        if x is None:
+            opp_q_tensor = torch.Tensor([1-q]).to(device)
+            opp_pred_y = model(opp_q_tensor)
+        else:
+            opp_q_tensor = (1-q) * torch.ones(num_pts).view(-1, 1).to(device)
+            opp_pred_y = model(torch.cat([x, opp_q_tensor], dim=1))
+
+        below_med = (q <= 0.5)
+        above_med = ~below_med
+
+        penalty = (below_med * (opp_pred_y - pred_y) +
+                          above_med * (pred_y - opp_pred_y))
+
+        loss = ((1 - args.sharp_penalty) * loss +
+                (args.sharp_penalty * penalty))
 
     return loss
 
@@ -69,7 +90,8 @@ def batch_cali_loss(model, y, x, q_list, device, args):
     cov_under = coverage < q_list.to(device)
     cov_over = ~cov_under
 
-    if hasattr(args, 'scale') and (args.scale):
+    # handle scaling
+    if hasattr(args, 'scale') and args.scale:
         cov_diff = torch.abs(coverage - q_list.to(device)) 
         loss_list = (cov_diff * cov_under * mean_diff_over) + \
                     (cov_diff * cov_over * mean_diff_under)
@@ -77,6 +99,27 @@ def batch_cali_loss(model, y, x, q_list, device, args):
         loss_list = (cov_under * mean_diff_over) + (cov_over * mean_diff_under)
 
     loss = torch.mean(loss_list)
+
+    # handle sharpness penalty
+    if hasattr(args, 'sharp_penalty'):
+        import pudb; pudb.set_trace()
+        assert isinstance(args.sharp_penalty, float)
+
+        if x is None:
+            opp_q_model_in = 1.0 - q_rep
+        else:
+            opp_q_model_in = torch.cat([x_stacked, (1.0 - q_rep)], dim=1)
+        opp_pred_y = model(opp_q_model_in)
+
+        below_med = ((1.0 - q_rep) <= 0.5)
+        above_med = ~below_med
+
+        sharp_penalty = (args.sharp_penalty *
+                         (below_med * (opp_pred_y - pred_y) +
+                          above_med * (pred_y - opp_pred_y)))
+
+        loss = ((1 - args.sharp_penalty) * loss +
+                (args.sharp_penalty * torch.mean(sharp_penalty)))
 
     return loss
 
@@ -105,7 +148,7 @@ def mod_cali_loss(model, y, x, q, device, args):
     else:
         loss = torch.mean(pred_y - y)
 
-    if hasattr(args, 'scale') and (args.scale):
+    if hasattr(args, 'scale') and args.scale:
         loss = torch.abs(q - coverage) * loss
 
     return loss
@@ -149,7 +192,7 @@ def batch_mod_cali_loss(model, y, x, q_list, device, args):
     cov_under = coverage < q_list.to(device)
     cov_over = ~cov_under
 
-    if hasattr(args, 'scale') and (args.scale):
+    if hasattr(args, 'scale') and args.scale:
         cov_diff = torch.abs(coverage - q_list.to(device)) 
         loss_list = (cov_diff * cov_under * mean_diff_over) + \
                     (cov_diff * cov_over * mean_diff_under)
