@@ -48,7 +48,7 @@ def cali_loss(model, y, x, q, device, args):
         above_med = ~below_med
 
         penalty = (below_med * (opp_pred_y - pred_y) +
-                          above_med * (pred_y - opp_pred_y))
+                   above_med * (pred_y - opp_pred_y))
 
         loss = ((1 - args.sharp_penalty) * loss +
                 (args.sharp_penalty * penalty))
@@ -114,9 +114,8 @@ def batch_cali_loss(model, y, x, q_list, device, args):
         below_med = ((1.0 - q_rep) <= 0.5)
         above_med = ~below_med
 
-        sharp_penalty = (args.sharp_penalty *
-                         (below_med * (opp_pred_y - pred_y) +
-                          above_med * (pred_y - opp_pred_y)))
+        sharp_penalty = (below_med * (opp_pred_y - pred_y) +
+                         above_med * (pred_y - opp_pred_y))
 
         loss = ((1 - args.sharp_penalty) * loss +
                 (args.sharp_penalty * torch.mean(sharp_penalty)))

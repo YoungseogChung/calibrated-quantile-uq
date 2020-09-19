@@ -87,6 +87,8 @@ def parse_args():
 
     parser.add_argument('--loss', type=str,
                         help='specify type of loss')
+    parser.add_argument('--penalty', dest='sharp_penalty', type=float,
+                        help='coefficient for sharpness penalty; 0 for non')
     parser.add_argument('--recal', type=int, default=1,
                         help='1 to recalibrate afterwards')
 
