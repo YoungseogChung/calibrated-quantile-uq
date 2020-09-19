@@ -34,6 +34,7 @@ def cali_loss(model, y, x, q, device, args):
         loss = torch.abs(q - coverage) * loss
 
     if hasattr(args, 'sharp_penalty'):
+        import pudb; pudb.set_trace()
         assert isinstance(args.sharp_penalty, float)
 
         if x is None:
@@ -43,14 +44,18 @@ def cali_loss(model, y, x, q, device, args):
             opp_q_tensor = (1-q) * torch.ones(num_pts).view(-1, 1).to(device)
             opp_pred_y = model(torch.cat([x, opp_q_tensor], dim=1))
 
-        below_med = (q <= 0.5)
-        above_med = ~below_med
+        with torch.no_grad():
+            below_med = (q <= 0.5)
+            above_med = ~below_med
 
-        penalty = (below_med * (opp_pred_y - pred_y) +
+        sharp_penalty = (below_med * (opp_pred_y - pred_y) +
                    above_med * (pred_y - opp_pred_y))
 
+        if sharp_penalty <= 0.0:
+            sharp_penalty = 0.0
+
         loss = ((1 - args.sharp_penalty) * loss +
-                (args.sharp_penalty * penalty))
+                (args.sharp_penalty * sharp_penalty))
 
     return loss
 
@@ -109,11 +114,17 @@ def batch_cali_loss(model, y, x, q_list, device, args):
             opp_q_model_in = torch.cat([x_stacked, (1.0 - q_rep)], dim=1)
         opp_pred_y = model(opp_q_model_in)
 
-        below_med = (q_rep <= 0.5)
-        above_med = ~below_med
+        with torch.no_grad():
+            below_med = (q_rep <= 0.5)
+            above_med = ~below_med
 
+        import pudb; pudb.set_trace()
         sharp_penalty = (below_med * (opp_pred_y - pred_y) +
                          above_med * (pred_y - opp_pred_y))
+        with torch.no_grad():
+            width_positive = (sharp_penalty > 0.0)
+            assert tuple(width_positive.shape) == tuple(sharp_penalty.shape)
+        sharp_penalty = width_positive * sharp_penalty
 
         loss = ((1 - args.sharp_penalty) * loss +
                 (args.sharp_penalty * torch.mean(sharp_penalty)))
