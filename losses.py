@@ -118,7 +118,6 @@ def batch_cali_loss(model, y, x, q_list, device, args):
             below_med = (q_rep <= 0.5)
             above_med = ~below_med
 
-        import pudb; pudb.set_trace()
         sharp_penalty = (below_med * (opp_pred_y - pred_y) +
                          above_med * (pred_y - opp_pred_y))
         with torch.no_grad():
