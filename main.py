@@ -29,7 +29,7 @@ def get_loss_fn(loss_name):
                        'cal_penalty', 'scaled_cal_penalty']:
         fn = cali_loss
     elif loss_name in ['batch_cal', 'scaled_batch_cal',
-                       'batch_cal_penalty', 'batch_scaled_cal_penalty']:
+                       'batch_cal_penalty', 'scaled_batch_cal_penalty']:
         fn = batch_cali_loss
     elif loss_name in ['mod_cal', 'scaled_mod_cal']:
         fn = mod_cali_loss
