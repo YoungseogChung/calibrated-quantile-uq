@@ -111,7 +111,7 @@ def batch_cali_loss(model, y, x, q_list, device, args):
             opp_q_model_in = torch.cat([x_stacked, (1.0 - q_rep)], dim=1)
         opp_pred_y = model(opp_q_model_in)
 
-        below_med = ((1.0 - q_rep) <= 0.5)
+        below_med = (q_rep <= 0.5)
         above_med = ~below_med
 
         sharp_penalty = (below_med * (opp_pred_y - pred_y) +
