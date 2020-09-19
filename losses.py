@@ -34,7 +34,6 @@ def cali_loss(model, y, x, q, device, args):
         loss = torch.abs(q - coverage) * loss
 
     if hasattr(args, 'sharp_penalty'):
-        import pudb; pudb.set_trace()
         assert isinstance(args.sharp_penalty, float)
 
         if x is None:
@@ -102,7 +101,6 @@ def batch_cali_loss(model, y, x, q_list, device, args):
 
     # handle sharpness penalty
     if hasattr(args, 'sharp_penalty'):
-        import pudb; pudb.set_trace()
         assert isinstance(args.sharp_penalty, float)
 
         if x is None:
