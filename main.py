@@ -25,9 +25,11 @@ def get_loss_fn(loss_name):
         fn = qr_loss
     elif loss_name == 'batch_qr':
         fn = batch_qr_loss
-    elif loss_name in ['cal', 'scaled_cal']:
+    elif loss_name in ['cal', 'scaled_cal',
+                       'cal_penalty', 'scaled_cal_penalty']:
         fn = cali_loss
-    elif loss_name in ['batch_cal', 'scaled_batch_cal']:
+    elif loss_name in ['batch_cal', 'scaled_batch_cal',
+                       'batch_cal_penalty', 'batch_scaled_cal_penalty']:
         fn = batch_cali_loss
     elif loss_name in ['mod_cal', 'scaled_mod_cal']:
         fn = mod_cali_loss
@@ -100,6 +102,15 @@ def parse_args():
 
     args = parser.parse_args()
 
+    if 'penalty' in args.loss:
+        assert (hasattr(args, 'sharp_penalty') and
+                isinstance(args.sharp_penalty, float))
+        assert 0.0 <= args.sharp_penalty <= 1.0
+    else:
+        if hasattr(args, 'sharp_penalty'):
+            delattr(args, 'sharp_penalty')
+        assert not hasattr(args, 'sharp_penalty')
+
     args.boot = bool(args.boot)
     args.epist = bool(args.epist)
     args.recal = bool(args.recal)
@@ -138,9 +149,15 @@ if __name__ == '__main__':
             args.seed = s
 
             # Save file name
-            save_file_name = '{}/{}_loss{}_epist{}_ens{}_boot{}_seed{}.pkl'.format(
-                args.save_dir,
-                args.data, args.loss, args.epist, args.num_ens, args.boot, args.seed)
+            if 'penalty' not in args.loss:
+                save_file_name = '{}/{}_loss{}_epist{}_ens{}_boot{}_seed{}.pkl'.format(
+                    args.save_dir,
+                    args.data, args.loss, args.epist, args.num_ens, args.boot, args.seed)
+            else:
+                save_file_name = '{}/{}_loss{}_pen{}_epist{}_ens{}_boot{}_seed{}.pkl'.format(
+                    args.save_dir,
+                    args.data, args.loss, args.sharp_penalty, args.epist,
+                    args.num_ens, args.boot, args.seed)
             if os.path.exists(save_file_name):
                 print('skipping {}'.format(save_file_name))
                 continue
