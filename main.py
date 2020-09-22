@@ -89,41 +89,46 @@ def parse_args():
 
     parser.add_argument('--loss', type=str,
                         help='specify type of loss')
+
+    # only for cali losses
     parser.add_argument('--penalty', dest='sharp_penalty', type=float,
                         help='coefficient for sharpness penalty; 0 for non')
-    parser.add_argument('--recal', type=int, default=1,
-                        help='1 to recalibrate afterwards')
     parser.add_argument('--rand_ref', type=int,
                         help='1 to use rand reference idxs for cali loss')
     parser.add_argument('--sharp_wide', type=int,
                         help='1 to penalize only widths that are over covered')
 
+    parser.add_argument('--recal', type=int, default=1,
+                        help='1 to recalibrate afterwards')
     parser.add_argument('--save_dir', type=str, 
                         default='/zfsauton/project/public/ysc/uq_uci/all_default',
                         help='dir to save results')
     parser.add_argument('--debug', type=int, default=0,
                         help='1 to debug')
-
     args = parser.parse_args()
 
     if 'penalty' in args.loss:
-        assert (hasattr(args, 'sharp_penalty') and
-                isinstance(args.sharp_penalty, float))
+        assert isinstance(args.sharp_penalty, float)
         assert 0.0 <= args.sharp_penalty <= 1.0
 
-        if hasattr(args, 'sharp_wide') and args.sharp_wide is not None:
+        if args.sharp_wide is not None:
             args.sharp_wide = bool(args.sharp_wide)
-        else:
-            delattr(args, 'sharp_wide') 
     else:
-        if hasattr(args, 'sharp_penalty'):
-            delattr(args, 'sharp_penalty')
-        assert not hasattr(args, 'sharp_penalty')
+        args.sharp_penalty = None
+        args.sharp_wide = None
+    # else:
+    #     if hasattr(args, 'sharp_penalty'):
+    #         delattr(args, 'sharp_penalty')
+    #     assert not hasattr(args, 'sharp_penalty')
+    #
+    #     if hasattr(args, 'sharp_wide'):
+    #         delattr(args, 'sharp_wide')
+    #     assert not hasattr(args, 'sharp_wide')
 
-    if hasattr(args, 'rand_ref') and args.rand_ref is not None:
+    if args.rand_ref is not None:
         args.rand_ref = bool(args.rand_ref)
-    else:
-        delattr(args, 'rand_ref')
+    # else:
+    #     delattr(args, 'rand_ref')
 
     args.boot = bool(args.boot)
     args.epist = bool(args.epist)
@@ -168,10 +173,17 @@ if __name__ == '__main__':
                     args.save_dir,
                     args.data, args.loss, args.epist, args.num_ens, args.boot, args.seed)
             else:
-                save_file_name = '{}/{}_loss{}_pen{}_epist{}_ens{}_boot{}_seed{}.pkl'.format(
-                    args.save_dir,
-                    args.data, args.loss, args.sharp_penalty, args.epist,
-                    args.num_ens, args.boot, args.seed)
+                # penalizing sharpness
+                if args.sharp_wide is not None and args.sharp_wide:
+                    save_file_name = '{}/{}_loss{}_pen{}_wideonly{}_epist{}_ens{}_boot{}_seed{}.pkl'.format(
+                        args.save_dir,
+                        args.data, args.loss, args.sharp_penalty, args.sharp_wide,
+                        args.epist, args.num_ens, args.boot, args.seed)
+                else:
+                    save_file_name = '{}/{}_loss{}_pen{}_epist{}_ens{}_boot{}_seed{}.pkl'.format(
+                        args.save_dir,
+                        args.data, args.loss, args.sharp_penalty, args.epist,
+                        args.num_ens, args.boot, args.seed)
             if os.path.exists(save_file_name):
                 print('skipping {}'.format(save_file_name))
                 continue

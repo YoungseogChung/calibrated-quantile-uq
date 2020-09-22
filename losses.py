@@ -94,23 +94,22 @@ def batch_cali_loss(model, y, x, q_list, device, args):
     cov_under = coverage < q_list.to(device)
     cov_over = ~cov_under
 
-    if hasattr(args, 'rand_ref') and args.rand_ref:
+    # handle random references
+    if args.rand_ref is not None and args.rand_ref:
         import pudb; pudb.set_trace()
     else:
         loss_list = (cov_under * mean_diff_over) + (cov_over * mean_diff_under)
 
     # handle scaling
-    if hasattr(args, 'scale') and args.scale:
+    if args.scale is not None and args.scale:
         cov_diff = torch.abs(coverage - q_list.to(device)) 
         loss_list = cov_diff * loss_list
         loss = torch.mean(loss_list)
     else:
         loss = torch.mean(loss_list)
 
-
-
     # handle sharpness penalty
-    if hasattr(args, 'sharp_penalty'):
+    if args.sharp_penalty is not None:
         assert isinstance(args.sharp_penalty, float)
 
         if x is None:
@@ -131,11 +130,10 @@ def batch_cali_loss(model, y, x, q_list, device, args):
 
         # penalize sharpness only if centered interval obs props is too high
         if hasattr(args, 'sharp_wide') and args.sharp_wide:
-            import pudb; pudb.set_trace()
             with torch.no_grad():
                 opp_pred_y_mat = opp_pred_y.reshape(num_q, num_pts)
                 below_med_mat = below_med.reshape(num_q, num_pts)
-                exp_interval_props = torch.abs((2 * q_list) - 1)
+                exp_interval_props = torch.abs((2 * q_list) - 1).to(device)
 
                 interval_lower_mat = ((below_med_mat * pred_y_mat) +
                                       (~below_med_mat * opp_pred_y_mat))
@@ -146,7 +144,9 @@ def batch_cali_loss(model, y, x, q_list, device, args):
                                        (y_mat <= interval_upper_mat))
                 obs_interval_props = torch.mean(within_interval_mat.float(), dim=1)
                 obs_over_exp = (obs_interval_props > exp_interval_props)
-            sharp_penalty = obs_over_exp * width_positive * sharp_penalty
+            sharp_penalty = (obs_over_exp.reshape(num_q, -1) *
+                             width_positive.reshape(num_q, num_pts) *
+                             sharp_penalty.reshape(num_q, num_pts))
         else:
             sharp_penalty = width_positive * sharp_penalty
 
