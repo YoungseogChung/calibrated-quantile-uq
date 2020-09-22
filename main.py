@@ -106,21 +106,24 @@ def parse_args():
 
     args = parser.parse_args()
 
-    import pudb; pudb.set_trace()
     if 'penalty' in args.loss:
         assert (hasattr(args, 'sharp_penalty') and
                 isinstance(args.sharp_penalty, float))
         assert 0.0 <= args.sharp_penalty <= 1.0
 
-        if hasattr(args, 'sharp_wide'):
+        if hasattr(args, 'sharp_wide') and args.sharp_wide is not None:
             args.sharp_wide = bool(args.sharp_wide)
+        else:
+            delattr(args, 'sharp_wide') 
     else:
         if hasattr(args, 'sharp_penalty'):
             delattr(args, 'sharp_penalty')
         assert not hasattr(args, 'sharp_penalty')
 
-    if hasattr(args, 'rand_ref'):
+    if hasattr(args, 'rand_ref') and args.rand_ref is not None:
         args.rand_ref = bool(args.rand_ref)
+    else:
+        delattr(args, 'rand_ref')
 
     args.boot = bool(args.boot)
     args.epist = bool(args.epist)

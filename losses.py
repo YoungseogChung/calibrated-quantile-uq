@@ -102,7 +102,6 @@ def batch_cali_loss(model, y, x, q_list, device, args):
     # handle scaling
     if hasattr(args, 'scale') and args.scale:
         cov_diff = torch.abs(coverage - q_list.to(device)) 
-        import pdb; pdb.set_trace()
         loss_list = cov_diff * loss_list
         loss = torch.mean(loss_list)
     else:
