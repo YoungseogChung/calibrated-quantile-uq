@@ -175,9 +175,9 @@ if __name__ == '__main__':
             else:
                 # penalizing sharpness
                 if args.sharp_wide is not None and args.sharp_wide:
-                    save_file_name = '{}/{}_loss{}_pen{}_wideonly{}_epist{}_ens{}_boot{}_seed{}.pkl'.format(
+                    save_file_name = '{}/{}_loss{}_pen{}_wideonly_epist{}_ens{}_boot{}_seed{}.pkl'.format(
                         args.save_dir,
-                        args.data, args.loss, args.sharp_penalty, args.sharp_wide,
+                        args.data, args.loss, args.sharp_penalty,
                         args.epist, args.num_ens, args.boot, args.seed)
                 else:
                     save_file_name = '{}/{}_loss{}_pen{}_epist{}_ens{}_boot{}_seed{}.pkl'.format(
