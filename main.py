@@ -93,6 +93,10 @@ def parse_args():
                         help='coefficient for sharpness penalty; 0 for non')
     parser.add_argument('--recal', type=int, default=1,
                         help='1 to recalibrate afterwards')
+    parser.add_argument('--rand_ref', type=int,
+                        help='1 to use rand reference idxs for cali loss')
+    parser.add_argument('--sharp_wide', type=int,
+                        help='1 to penalize only widths that are over covered')
 
     parser.add_argument('--save_dir', type=str, 
                         default='/zfsauton/project/public/ysc/uq_uci/all_default',
@@ -102,14 +106,21 @@ def parse_args():
 
     args = parser.parse_args()
 
+    import pudb; pudb.set_trace()
     if 'penalty' in args.loss:
         assert (hasattr(args, 'sharp_penalty') and
                 isinstance(args.sharp_penalty, float))
         assert 0.0 <= args.sharp_penalty <= 1.0
+
+        if hasattr(args, 'sharp_wide'):
+            args.sharp_wide = bool(args.sharp_wide)
     else:
         if hasattr(args, 'sharp_penalty'):
             delattr(args, 'sharp_penalty')
         assert not hasattr(args, 'sharp_penalty')
+
+    if hasattr(args, 'rand_ref'):
+        args.rand_ref = bool(args.rand_ref)
 
     args.boot = bool(args.boot)
     args.epist = bool(args.epist)

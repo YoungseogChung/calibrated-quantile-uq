@@ -131,7 +131,7 @@ def batch_cali_loss(model, y, x, q_list, device, args):
             assert tuple(width_positive.shape) == tuple(sharp_penalty.shape)
 
         # penalize sharpness only if centered interval obs props is too high
-        if hasattr(args, 'sharp_wide_only') and args.sharp_wide_only:
+        if hasattr(args, 'sharp_wide') and args.sharp_wide:
             import pudb; pudb.set_trace()
             with torch.no_grad():
                 opp_pred_y_mat = opp_pred_y.reshape(num_q, num_pts)
