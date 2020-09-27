@@ -33,6 +33,32 @@ def get_uci_data(args):
 
     return out_namespace
 
+
+def get_toy_data(args):
+    x_tr = np.load('{}/toy_x_tr.npy'.format(args.data_dir))
+    y_tr = np.load('{}/toy_y_tr.npy'.format(args.data_dir))
+    x_va = np.load('{}/toy_x_va.npy'.format(args.data_dir))
+    y_va = np.load('{}/toy_y_va.npy'.format(args.data_dir))
+    x_te = np.load('{}/toy_x_te.npy'.format(args.data_dir))
+    y_te = np.load('{}/toy_y_te.npy'.format(args.data_dir))
+
+    y_al = np.concatenate([y_tr, y_va, y_te], axis=0)
+
+    x_tr = torch.Tensor(x_tr)
+    x_va = torch.Tensor(x_va)
+    x_te = torch.Tensor(x_te)
+
+    y_tr = torch.Tensor(y_tr)
+    y_va = torch.Tensor(y_va)
+    y_te = torch.Tensor(y_te)
+    y_al = torch.Tensor(y_al)
+
+    out_namespace = Namespace(x_tr=x_tr, x_va=x_va, x_te=x_te,
+                              y_tr=y_tr, y_va=y_va, y_te=y_te, y_al=y_al)
+
+    return out_namespace
+
+
 def get_fusion_data(args):
 
     cur_dir = '{}/{}'.format(args.data_dir, args.data) 

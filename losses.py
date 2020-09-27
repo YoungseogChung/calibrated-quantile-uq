@@ -96,17 +96,118 @@ def batch_cali_loss(model, y, x, q_list, device, args):
 
     # handle random references
     if args.rand_ref is not None and args.rand_ref:
+        # ### actual rand ref
+        # loss_per_q = []
+        # import pudb; pudb.set_trace()
+        # for q_idx in range(num_q):
+        #     curr_cov_diff = q_list[q_idx].item() - coverage[q_idx].item()
+        #     num_perturb_pts = int(round(np.abs(curr_cov_diff * num_pts)))
+        #     rand_idxs = np.random.choice(num_pts, num_perturb_pts, replace=False)
+        #     if len(rand_idxs) < 1:
+        #         loss_per_q.append(torch.tensor(0.0).to(device))
+        #         continue
+        #     curr_loss = np.sign(curr_cov_diff) * diff_mat[q_idx, rand_idxs]
+        #     if not torch.isfinite(torch.mean(curr_loss)):
+        #         pudb.set_trace()
+        #     loss_per_q.append(torch.mean(curr_loss))
+        # loss_list = torch.stack(loss_per_q)
+        # ###
         import pudb; pudb.set_trace()
+        loss_list = (cov_under * (-1 * mean_diff_under)) + (cov_over * (-1 * mean_diff_over))
     else:
         loss_list = (cov_under * mean_diff_over) + (cov_over * mean_diff_under)
 
     # handle scaling
     if args.scale is not None and args.scale:
-        cov_diff = torch.abs(coverage - q_list.to(device)) 
+        with torch.no_grad():
+            cov_diff = torch.abs(coverage - q_list.to(device))
         loss_list = cov_diff * loss_list
         loss = torch.mean(loss_list)
     else:
         loss = torch.mean(loss_list)
+
+    # handle sharpness penalty
+    if args.sharp_penalty is not None:
+        assert isinstance(args.sharp_penalty, float)
+
+        # make input for corresponding opposite q
+        if x is None:
+            opp_q_model_in = 1.0 - q_rep
+        else:
+            opp_q_model_in = torch.cat([x_stacked, (1.0 - q_rep)], dim=1)
+        opp_pred_y = model(opp_q_model_in)
+
+        with torch.no_grad():
+            below_med = (q_rep <= 0.5)
+            above_med = ~below_med
+
+        sharp_penalty = (below_med * (opp_pred_y - pred_y) +
+                         above_med * (pred_y - opp_pred_y))
+        with torch.no_grad():
+            width_positive = (sharp_penalty > 0.0)
+            assert tuple(width_positive.shape) == tuple(sharp_penalty.shape)
+
+        # penalize sharpness only if centered interval obs props is too high
+        if hasattr(args, 'sharp_all') and args.sharp_all:
+            sharp_penalty = width_positive * sharp_penalty
+        else:
+            with torch.no_grad():
+                opp_pred_y_mat = opp_pred_y.reshape(num_q, num_pts)
+                below_med_mat = below_med.reshape(num_q, num_pts)
+                exp_interval_props = torch.abs((2 * q_list) - 1).to(device)
+
+                interval_lower_mat = ((below_med_mat * pred_y_mat) +
+                                      (~below_med_mat * opp_pred_y_mat))
+                interval_upper_mat = ((~below_med_mat * pred_y_mat) +
+                                      (below_med_mat * opp_pred_y_mat))
+
+                within_interval_mat = ((interval_lower_mat <= y_mat) *
+                                       (y_mat <= interval_upper_mat))
+                obs_interval_props = torch.mean(within_interval_mat.float(), dim=1)
+                obs_over_exp = (obs_interval_props > exp_interval_props)
+            sharp_penalty = (obs_over_exp.reshape(num_q, -1) *
+                             width_positive.reshape(num_q, num_pts) *
+                             sharp_penalty.reshape(num_q, num_pts))
+
+        loss = (
+            ((1 - args.sharp_penalty) * loss) +
+            ((args.sharp_penalty) * torch.mean(sharp_penalty))
+        )
+
+    if not torch.isfinite(loss):
+        import pudb; pudb.set_trace()
+    return loss
+
+
+def batch_diff_cali_loss(model, y, x, q_list, device, args):
+    """
+    batched version of original proposed loss function for batch of quantiles
+
+    q_list: torch tensor of size [N]
+    """
+    num_pts = y.size(0)
+    num_q = q_list.size(0)
+
+    q_rep = q_list.view(-1, 1).repeat(1, num_pts).view(-1, 1).to(device)
+    y_stacked = y.repeat(num_q, 1)
+    y_mat = y_stacked.reshape(num_q, num_pts)
+
+    if x is None:
+        model_in = q_rep
+    else:
+        x_stacked = x.repeat(num_q, 1)
+        model_in = torch.cat([x_stacked, q_rep], dim=1)
+    pred_y = model(model_in)
+    pred_y_mat = pred_y.reshape(num_q, num_pts)
+
+    est_cdf_out = torch.sigmoid((pred_y - y_stacked)).reshape(num_q, num_pts)
+    coverage = torch.mean(est_cdf_out, dim=1)
+
+    cov_under = coverage < q_list.to(device)
+    cov_over = ~cov_under
+
+    loss = (cov_under * (q_list.to(device) - coverage) +
+            cov_over * (coverage - q_list.to(device)))
 
     # handle sharpness penalty
     if args.sharp_penalty is not None:
@@ -129,7 +230,7 @@ def batch_cali_loss(model, y, x, q_list, device, args):
             assert tuple(width_positive.shape) == tuple(sharp_penalty.shape)
 
         # penalize sharpness only if centered interval obs props is too high
-        if hasattr(args, 'sharp_wide') and args.sharp_wide:
+        if args.sharp_wide is not None and args.sharp_wide:
             with torch.no_grad():
                 opp_pred_y_mat = opp_pred_y.reshape(num_q, num_pts)
                 below_med_mat = below_med.reshape(num_q, num_pts)
@@ -142,7 +243,82 @@ def batch_cali_loss(model, y, x, q_list, device, args):
 
                 within_interval_mat = ((interval_lower_mat <= y_mat) *
                                        (y_mat <= interval_upper_mat))
-                obs_interval_props = torch.mean(within_interval_mat.float(), dim=1)
+                obs_interval_props = torch.mean(within_interval_mat.float(),
+                                                dim=1)
+                obs_over_exp = (obs_interval_props > exp_interval_props)
+            sharp_penalty = (obs_over_exp.reshape(num_q, -1) *
+                             width_positive.reshape(num_q, num_pts) *
+                             sharp_penalty.reshape(num_q, num_pts))
+        else:
+            sharp_penalty = width_positive * sharp_penalty
+
+        loss = ((1 - args.sharp_penalty) * loss +
+                (args.sharp_penalty * torch.mean(sharp_penalty)))
+    return torch.mean(loss)
+
+
+def batch_indv_cali_loss(model, y, x, q_list, device, args):
+    """
+    batched version of original proposed loss function for batch of quantiles
+
+    q_list: torch tensor of size [N]
+    """
+
+    num_pts = y.size(0)
+    num_q = q_list.size(0)
+
+    q_rep = q_list.view(-1, 1).repeat(1, num_pts).view(-1, 1).to(device)
+    y_stacked = y.repeat(num_q, 1)
+    y_mat = y_stacked.reshape(num_q, num_pts)
+
+    if x is None:
+        model_in = q_rep
+    else:
+        x_stacked = x.repeat(num_q, 1)
+        model_in = torch.cat([x_stacked, q_rep], dim=1)
+    pred_y = model(model_in)
+    pred_y_mat = pred_y.reshape(num_q, num_pts)
+
+    est_cdf_out = torch.sigmoid(5.0 * (pred_y - y_stacked))
+    obs_diff = torch.abs(est_cdf_out - q_rep)
+    loss = torch.mean(obs_diff)
+
+    # handle sharpness penalty
+    if args.sharp_penalty is not None:
+        assert isinstance(args.sharp_penalty, float)
+
+        if x is None:
+            opp_q_model_in = 1.0 - q_rep
+        else:
+            opp_q_model_in = torch.cat([x_stacked, (1.0 - q_rep)], dim=1)
+        opp_pred_y = model(opp_q_model_in)
+
+        with torch.no_grad():
+            below_med = (q_rep <= 0.5)
+            above_med = ~below_med
+
+        sharp_penalty = (below_med * (opp_pred_y - pred_y) +
+                         above_med * (pred_y - opp_pred_y))
+        with torch.no_grad():
+            width_positive = (sharp_penalty > 0.0)
+            assert tuple(width_positive.shape) == tuple(sharp_penalty.shape)
+
+        # penalize sharpness only if centered interval obs props is too high
+        if args.sharp_wide is not None and args.sharp_wide:
+            with torch.no_grad():
+                opp_pred_y_mat = opp_pred_y.reshape(num_q, num_pts)
+                below_med_mat = below_med.reshape(num_q, num_pts)
+                exp_interval_props = torch.abs((2 * q_list) - 1).to(device)
+
+                interval_lower_mat = ((below_med_mat * pred_y_mat) +
+                                      (~below_med_mat * opp_pred_y_mat))
+                interval_upper_mat = ((~below_med_mat * pred_y_mat) +
+                                      (below_med_mat * opp_pred_y_mat))
+
+                within_interval_mat = ((interval_lower_mat <= y_mat) *
+                                       (y_mat <= interval_upper_mat))
+                obs_interval_props = torch.mean(within_interval_mat.float(),
+                                                dim=1)
                 obs_over_exp = (obs_interval_props > exp_interval_props)
             sharp_penalty = (obs_over_exp.reshape(num_q, -1) *
                              width_positive.reshape(num_q, num_pts) *
@@ -154,7 +330,6 @@ def batch_cali_loss(model, y, x, q_list, device, args):
                 (args.sharp_penalty * torch.mean(sharp_penalty)))
 
     return loss
-
 
 def mod_cali_loss(model, y, x, q, device, args):
     """

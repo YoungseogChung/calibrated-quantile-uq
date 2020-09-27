@@ -7,7 +7,8 @@ import pickle as pkl
 import tqdm
 import torch
 from data.fetch_data import get_uci_data, get_toy_data, get_fusion_data
-from utils.misc_utils import test_uq, set_seeds, get_q_idx, gather_loss_per_q
+from utils.misc_utils import test_uq, set_seeds, get_q_idx, discretize_domain, \
+    gather_loss_per_q
 from recal import iso_recal
 from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
@@ -155,9 +156,8 @@ def parse_args():
 if __name__ == '__main__':
     # DATA_NAMES = \
     #     ['wine', 'naval', 'kin8nm', 'energy', 'yacht', 'concrete', 'power', 'boston']
-    # DATA_NAMES = \
-    #     ['wine']
-    DATA_NAMES = ['']
+    DATA_NAMES = ['wine']
+    # DATA_NAMES = ['']
     SEEDS = [0,1,2,3,4]
 
     args = parse_args()
@@ -271,13 +271,24 @@ if __name__ == '__main__':
                 # Take train step
                 ep_train_loss = []  # list of losses from each batch, for one epoch
                 if not args.boot:
-                    for (xi, yi) in loader:
-                        xi, yi = xi.to(args.device), yi.to(args.device)
-                        q_list = torch.rand(args.num_q)
-                        loss = model_ens.loss(loss_fn, xi, yi, q_list, 
-                                              batch_q=batch_loss,
-                                              take_step=True, args=args)
-                        ep_train_loss.append(loss)
+                    if ep % 1 == 0:
+                        # print('group cali loss')
+                        group_idxs = discretize_domain(x_tr.numpy(), args.bs)
+                        for g_idx in group_idxs:
+                            xi = x_tr[g_idx.flatten()].to(args.device)
+                            yi = y_tr[g_idx.flatten()].to(args.device)
+                            q_list = torch.rand(args.num_q)
+                            loss = model_ens.loss(loss_fn, xi, yi, q_list, batch_q=batch_loss,
+                                                  take_step=True, args=args)
+                            ep_train_loss.append(loss)
+                    else:
+                        for (xi, yi) in loader:
+                            xi, yi = xi.to(args.device), yi.to(args.device)
+                            q_list = torch.rand(args.num_q)
+                            loss = model_ens.loss(loss_fn, xi, yi, q_list,
+                                                  batch_q=batch_loss,
+                                                  take_step=True, args=args)
+                            ep_train_loss.append(loss)
                 else:
                     for xi_yi_samp in zip(*loader_list):
                         xi_list = [item[0].to(args.device) for item in xi_yi_samp]
@@ -352,7 +363,7 @@ if __name__ == '__main__':
             te_cali_score, te_sharp_score, te_obs_props, te_q_preds, te_g_cali_scores = \
                 test_uq(model_ens, x_te, y_te, te_exp_props, y_range,
                         recal_model=None, recal_type=None)
-            np.save('{}.npy'.format(args.loss), te_g_cali_scores)
+            np.save('no_sq_{}.npy'.format(args.loss), te_g_cali_scores)
             print('train', tr_cali_score, tr_sharp_score)
             print('val', va_cali_score, va_sharp_score)
             print('test', te_cali_score, te_sharp_score)
