@@ -151,7 +151,7 @@ def discretize_domain(x_arr, min_pts):
 
     group_data_idxs = []
     while len(group_data_idxs) < 1:
-        n_bins = np.random.randint(low=1, high=6, size=dim_x)
+        n_bins = np.random.randint(low=1, high=4, size=dim_x)
         H, edges = histogramdd(x_arr, bins=n_bins)
 
         group_idxs = np.where(H >= min_pts)
