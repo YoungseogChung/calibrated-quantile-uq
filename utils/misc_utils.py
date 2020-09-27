@@ -69,8 +69,6 @@ def test_uq(model, x, y, exp_props, y_range, recal_model=None, recal_type=None,
         plt.show()
 
     g_cali_scores = []
-    # g_sharp_scores = []
-    # g_mean_cali_scores = []
     if test_group_cal:
         ratio_arr = np.linspace(0.01, 1.0, 15)
         for r in tqdm.tqdm(ratio_arr):
@@ -79,11 +77,7 @@ def test_uq(model, x, y, exp_props, y_range, recal_model=None, recal_type=None,
                 exp_props=exp_props[idx_01:idx_99 + 1], y_range=y_range, ratio=r
             )
             g_cali_scores.append(gc)
-            # g_sharp_scores.append(gs)
-            # g_mean_cali_scores.append(gmc)
         g_cali_scores = np.array(g_cali_scores)
-        # g_sharp_scores = np.array(g_sharp_scores)
-        # g_mean_cali_scores = np.array(g_mean_cali_scores)
 
         # plt.plot(ratio_arr, g_cali_scores)
         # plt.show()
@@ -93,10 +87,6 @@ def test_uq(model, x, y, exp_props, y_range, recal_model=None, recal_type=None,
 
 def test_group_cali(y, q_pred_mat, exp_props, y_range, ratio,
                    num_group_draws=20, make_plots=False):
-
-    # obs_props, quantile_preds, quantile_preds_mat = \
-    #     ens_get_props(model, x, y, exp_props=exp_props, recal_model=recal_model,
-    #                   recal_type=recal_type)
 
     num_pts, num_q = q_pred_mat.shape
     group_size = int(round(num_pts * ratio))
@@ -118,8 +108,8 @@ def test_group_cali(y, q_pred_mat, exp_props, y_range, ratio,
         #     g_q_preds[:,q_975_idx] - g_q_preds[:,q_025_idx]
         # ).item() / y_range
 
-        # group_obs_props.append(g_obs_props)
         group_cali_scores.append(g_cali_score)
+        # group_obs_props.append(g_obs_props)
         # group_sharp_scores.append(g_sharp_score)
 
     mean_cali_score = np.mean(group_cali_scores)
