@@ -121,7 +121,7 @@ def test_group_cal(y, q_pred_mat, exp_props, y_range, ratio,
         group_cali_scores.append(g_cali_score)
         # group_sharp_scores.append(g_sharp_score)
 
-    mean_cali_score = np.max(group_cali_scores)
+    mean_cali_score = np.mean(group_cali_scores)
     # mean_sharp_score = np.mean(group_sharp_scores)
     # mean_group_obs_props = torch.mean(torch.stack(group_obs_props, dim=0), dim=0)
     # mean_group_cali_score = plot_calibration_curve(exp_props, mean_group_obs_props,
@@ -150,7 +150,7 @@ def discretize_domain(x_arr, min_pts):
 
     group_data_idxs = []
     while len(group_data_idxs) < 1:
-        n_bins = np.random.randint(low=1, high=6, size=dim_x)
+        n_bins = np.random.randint(low=1, high=4, size=dim_x)
         H, edges = histogramdd(x_arr, bins=n_bins)
 
         group_idxs = np.where(H >= min_pts)
