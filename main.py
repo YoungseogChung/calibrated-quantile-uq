@@ -153,11 +153,11 @@ def parse_args():
 
 
 if __name__ == '__main__':
-    # DATA_NAMES = \
-    #     ['wine', 'naval', 'kin8nm', 'energy', 'yacht', 'concrete', 'power', 'boston']
+    DATA_NAMES = \
+        ['wine', 'naval', 'kin8nm', 'energy', 'yacht', 'concrete', 'power', 'boston']
     # DATA_NAMES = \
     #     ['wine']
-    DATA_NAMES = ['']
+    # DATA_NAMES = ['']
     SEEDS = [0,1,2,3,4]
 
     args = parse_args()
@@ -351,54 +351,56 @@ if __name__ == '__main__':
             te_exp_props = torch.linspace(0.01, 0.99, 99)
             te_cali_score, te_sharp_score, te_obs_props, te_q_preds, te_g_cali_scores = \
                 test_uq(model_ens, x_te, y_te, te_exp_props, y_range,
-                        recal_model=None, recal_type=None)
-            np.save('{}.npy'.format(args.loss), te_g_cali_scores)
+                        recal_model=None, recal_type=None, test_group_cal=True)
+            # np.save('{}.npy'.format(args.loss), te_g_cali_scores)
+
             print('train', tr_cali_score, tr_sharp_score)
             print('val', va_cali_score, va_sharp_score)
             print('test', te_cali_score, te_sharp_score)
 
-            ###
-            if 'toy' in args.data_dir:
-                x_list = [x_tr.cpu().numpy(), x_va.cpu().numpy(), x_te.cpu().numpy()]
-                y_list = [y_tr.cpu().numpy(), y_va.cpu().numpy(), y_te.cpu().numpy()]
-                pred_mat_list = [tr_q_preds, reduced_va_q_preds, te_q_preds]
-                for (x_arr, y_arr, pred_mat) in zip(x_list, y_list, pred_mat_list):
-                    for i in [1, 4, 10, 25, 50, 75, 90, 94, 97]:
-                        plt.plot(x_arr, pred_mat[:, i], linewidth=1)
-                    plt.scatter(x_arr, y_arr, s=0.5)
-                    plt.show()
-            else:
-                tr_order = np.argsort(y_tr.cpu().numpy().flatten())
-                va_order = np.argsort(y_va.cpu().numpy().flatten())
-                te_order = np.argsort(y_te.cpu().numpy().flatten())
-                y_arr_list = [y_tr.cpu().numpy(), y_va.cpu().numpy(),
-                              y_te.cpu().numpy()]
-                y_order_list = [tr_order, va_order, te_order]
-                pred_mat_list = [tr_q_preds, reduced_va_q_preds, te_q_preds]
-                for (y_arr, y_order, pred_mat) in zip(y_arr_list, y_order_list, pred_mat_list):
-                    for i in np.arange(1, 100, 24):
-                        plt.plot(pred_mat[:, i][y_order], linewidth=0.5)
-                    plt.plot(y_arr[y_order], '--', linewidth=2)
-                    plt.show()
-            ###
+            #   ###
+            #   if 'toy' in args.data_dir:
+            #       x_list = [x_tr.cpu().numpy(), x_va.cpu().numpy(), x_te.cpu().numpy()]
+            #       y_list = [y_tr.cpu().numpy(), y_va.cpu().numpy(), y_te.cpu().numpy()]
+            #       pred_mat_list = [tr_q_preds, reduced_va_q_preds, te_q_preds]
+            #       for (x_arr, y_arr, pred_mat) in zip(x_list, y_list, pred_mat_list):
+            #           for i in [1, 4, 10, 25, 50, 75, 90, 94, 97]:
+            #               plt.plot(x_arr, pred_mat[:, i], linewidth=1)
+            #           plt.scatter(x_arr, y_arr, s=0.5)
+            #           plt.show()
+            #   else:
+            #       tr_order = np.argsort(y_tr.cpu().numpy().flatten())
+            #       va_order = np.argsort(y_va.cpu().numpy().flatten())
+            #       te_order = np.argsort(y_te.cpu().numpy().flatten())
+            #       y_arr_list = [y_tr.cpu().numpy(), y_va.cpu().numpy(),
+            #                     y_te.cpu().numpy()]
+            #       y_order_list = [tr_order, va_order, te_order]
+            #       pred_mat_list = [tr_q_preds, reduced_va_q_preds, te_q_preds]
+            #       for (y_arr, y_order, pred_mat) in zip(y_arr_list, y_order_list, pred_mat_list):
+            #           for i in np.arange(1, 100, 24):
+            #               plt.plot(pred_mat[:, i][y_order], linewidth=0.5)
+            #           plt.plot(y_arr[y_order], '--', linewidth=2)
+            #           plt.show()
+            #   ###
 
-            import pudb; pudb.set_trace()
             if args.recal:
                 recal_model = iso_recal(va_exp_props, va_obs_props)
                 recal_exp_props = torch.linspace(0.01, 0.99, 99)
 
                 recal_va_cali_score, recal_va_sharp_score, recal_va_obs_props, \
-                recal_va_q_preds = \
+                recal_va_q_preds, recal_va_g_cali_scores = \
                     test_uq(model_ens, x_va, y_va, recal_exp_props, y_range,
-                            recal_model=recal_model, recal_type='sklearn')
+                            recal_model=recal_model, recal_type='sklearn',
+                            test_group_cal=True)
 
                 recal_te_cali_score, recal_te_sharp_score, recal_te_obs_props, \
-                recal_te_q_preds = \
+                recal_te_q_preds, recal_te_g_cali_scores = \
                     test_uq(model_ens, x_te, y_te, recal_exp_props, y_range,
-                            recal_model=recal_model, recal_type='sklearn')
+                            recal_model=recal_model, recal_type='sklearn',
+                            test_group_cal=True)
 
                 recal_tr_cali_score, recal_tr_sharp_score, recal_tr_obs_props, \
-                recal_tr_q_preds = \
+                recal_tr_q_preds, _ = \
                     test_uq(model_ens, x_tr, y_tr, recal_exp_props, y_range,
                             recal_model=recal_model, recal_type='sklearn')
 
@@ -442,6 +444,11 @@ if __name__ == '__main__':
                 'recal_te_sharp_score': recal_te_sharp_score,
                 'recal_te_obs_props': recal_te_obs_props,
                 'recal_te_q_preds': recal_te_q_preds,
+
+                'te_g_cali_scores': te_g_cali_scores,
+                'recal_va_g_cali_scores': recal_va_g_cali_scores, 
+                'recal_te_g_cali_scores': recal_te_g_cali_scores, 
+
 
                 'x_va': x_va,
                 'y_va': y_va,
