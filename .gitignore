@@ -1,2 +1,3 @@
 *.npy
 utils/NNKit/*
+*__pycache__*
