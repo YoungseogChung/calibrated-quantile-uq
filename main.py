@@ -358,30 +358,30 @@ if __name__ == '__main__':
             print('val', va_cali_score, va_sharp_score)
             print('test', te_cali_score, te_sharp_score)
 
-            #   ###
-            #   if 'toy' in args.data_dir:
-            #       x_list = [x_tr.cpu().numpy(), x_va.cpu().numpy(), x_te.cpu().numpy()]
-            #       y_list = [y_tr.cpu().numpy(), y_va.cpu().numpy(), y_te.cpu().numpy()]
-            #       pred_mat_list = [tr_q_preds, reduced_va_q_preds, te_q_preds]
-            #       for (x_arr, y_arr, pred_mat) in zip(x_list, y_list, pred_mat_list):
-            #           for i in [1, 4, 10, 25, 50, 75, 90, 94, 97]:
-            #               plt.plot(x_arr, pred_mat[:, i], linewidth=1)
-            #           plt.scatter(x_arr, y_arr, s=0.5)
-            #           plt.show()
-            #   else:
-            #       tr_order = np.argsort(y_tr.cpu().numpy().flatten())
-            #       va_order = np.argsort(y_va.cpu().numpy().flatten())
-            #       te_order = np.argsort(y_te.cpu().numpy().flatten())
-            #       y_arr_list = [y_tr.cpu().numpy(), y_va.cpu().numpy(),
-            #                     y_te.cpu().numpy()]
-            #       y_order_list = [tr_order, va_order, te_order]
-            #       pred_mat_list = [tr_q_preds, reduced_va_q_preds, te_q_preds]
-            #       for (y_arr, y_order, pred_mat) in zip(y_arr_list, y_order_list, pred_mat_list):
-            #           for i in np.arange(1, 100, 24):
-            #               plt.plot(pred_mat[:, i][y_order], linewidth=0.5)
-            #           plt.plot(y_arr[y_order], '--', linewidth=2)
-            #           plt.show()
-            #   ###
+            # ### plotting prediction intervals just for sanity check
+            # if 'toy' in args.data_dir:
+            #     x_list = [x_tr.cpu().numpy(), x_va.cpu().numpy(), x_te.cpu().numpy()]
+            #     y_list = [y_tr.cpu().numpy(), y_va.cpu().numpy(), y_te.cpu().numpy()]
+            #     pred_mat_list = [tr_q_preds, reduced_va_q_preds, te_q_preds]
+            #     for (x_arr, y_arr, pred_mat) in zip(x_list, y_list, pred_mat_list):
+            #         for i in [1, 4, 10, 25, 50, 75, 90, 94, 97]:
+            #             plt.plot(x_arr, pred_mat[:, i], linewidth=1)
+            #         plt.scatter(x_arr, y_arr, s=0.5)
+            #         plt.show()
+            # else:
+            #     tr_order = np.argsort(y_tr.cpu().numpy().flatten())
+            #     va_order = np.argsort(y_va.cpu().numpy().flatten())
+            #     te_order = np.argsort(y_te.cpu().numpy().flatten())
+            #     y_arr_list = [y_tr.cpu().numpy(), y_va.cpu().numpy(),
+            #                   y_te.cpu().numpy()]
+            #     y_order_list = [tr_order, va_order, te_order]
+            #     pred_mat_list = [tr_q_preds, reduced_va_q_preds, te_q_preds]
+            #     for (y_arr, y_order, pred_mat) in zip(y_arr_list, y_order_list, pred_mat_list):
+            #         for i in np.arange(1, 100, 24):
+            #             plt.plot(pred_mat[:, i][y_order], linewidth=0.5)
+            #         plt.plot(y_arr[y_order], '--', linewidth=2)
+            #         plt.show()
+            # ###
 
             if args.recal:
                 recal_model = iso_recal(va_exp_props, va_obs_props)
@@ -448,7 +448,6 @@ if __name__ == '__main__':
                 'te_g_cali_scores': te_g_cali_scores,
                 'recal_va_g_cali_scores': recal_va_g_cali_scores, 
                 'recal_te_g_cali_scores': recal_te_g_cali_scores, 
-
 
                 'x_va': x_va,
                 'y_va': y_va,
