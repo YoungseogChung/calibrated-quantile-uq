@@ -32,7 +32,7 @@ def get_q_idx(exp_props, q):
 
 
 def test_uq(model, x, y, exp_props, y_range, recal_model=None, recal_type=None,
-            make_plots=False):
+            make_plots=False, test_group_cal=False):
 
     # obs_props, quantile_preds, quantile_preds_mat = \
     #     ens_get_props(model, x, y, exp_props=exp_props, recal_model=recal_model,
@@ -71,26 +71,27 @@ def test_uq(model, x, y, exp_props, y_range, recal_model=None, recal_type=None,
     g_cali_scores = []
     # g_sharp_scores = []
     # g_mean_cali_scores = []
-    ratio_arr = np.linspace(0.01, 1.0, 15)
-    for r in tqdm.tqdm(ratio_arr):
-        gc = test_group_cal(
-            y=y, q_pred_mat=quantile_preds[:, idx_01:idx_99 + 1],
-            exp_props=exp_props[idx_01:idx_99 + 1], y_range=y_range, ratio=r
-        )
-        g_cali_scores.append(gc)
-        # g_sharp_scores.append(gs)
-        # g_mean_cali_scores.append(gmc)
-    g_cali_scores = np.array(g_cali_scores)
-    # g_sharp_scores = np.array(g_sharp_scores)
-    # g_mean_cali_scores = np.array(g_mean_cali_scores)
+    if test_group_cal:
+        ratio_arr = np.linspace(0.01, 1.0, 15)
+        for r in tqdm.tqdm(ratio_arr):
+            gc = test_group_cali(
+                y=y, q_pred_mat=quantile_preds[:, idx_01:idx_99 + 1],
+                exp_props=exp_props[idx_01:idx_99 + 1], y_range=y_range, ratio=r
+            )
+            g_cali_scores.append(gc)
+            # g_sharp_scores.append(gs)
+            # g_mean_cali_scores.append(gmc)
+        g_cali_scores = np.array(g_cali_scores)
+        # g_sharp_scores = np.array(g_sharp_scores)
+        # g_mean_cali_scores = np.array(g_mean_cali_scores)
 
-    plt.plot(ratio_arr, g_cali_scores)
-    plt.show()
+        # plt.plot(ratio_arr, g_cali_scores)
+        # plt.show()
 
     return cali_score, sharp_score, obs_props, quantile_preds, g_cali_scores
 
 
-def test_group_cal(y, q_pred_mat, exp_props, y_range, ratio,
+def test_group_cali(y, q_pred_mat, exp_props, y_range, ratio,
                    num_group_draws=20, make_plots=False):
 
     # obs_props, quantile_preds, quantile_preds_mat = \
@@ -121,7 +122,7 @@ def test_group_cal(y, q_pred_mat, exp_props, y_range, ratio,
         group_cali_scores.append(g_cali_score)
         # group_sharp_scores.append(g_sharp_score)
 
-    mean_cali_score = np.max(group_cali_scores)
+    mean_cali_score = np.mean(group_cali_scores)
     # mean_sharp_score = np.mean(group_sharp_scores)
     # mean_group_obs_props = torch.mean(torch.stack(group_obs_props, dim=0), dim=0)
     # mean_group_cali_score = plot_calibration_curve(exp_props, mean_group_obs_props,
