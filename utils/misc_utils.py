@@ -156,6 +156,8 @@ def discretize_domain(x_arr, min_pts):
                 good_dim_idxs.append((l <= x_arr[:, d_idx]) * (x_arr[:, d_idx] < u))
             curr_group_1 = np.prod(np.stack(good_dim_idxs, axis=0), axis=0)
             curr_group_idx = np.where(curr_group_1.flatten() > 0)
+            if curr_group_idx[0].size < min_pts:
+                continue
             group_data_idxs.append(curr_group_idx[0])
 
     rand_dim_idx = np.random.randint(dim_x)
@@ -173,9 +175,14 @@ def discretize_domain(x_arr, min_pts):
                 end_idx = len(rest_rand_sorted)
             else:
                 end_idx = beg_idx + rest_group_size
-            rest_group_data_idxs.append(np.array(rest_rand_sorted[beg_idx:end_idx]))
+
+            if np.array(rest_rand_sorted[beg_idx:end_idx]).size >= rest_group_size:
+                rest_group_data_idxs.append(np.array(rest_rand_sorted[beg_idx:end_idx]))
             beg_idx = end_idx
         group_data_idxs.extend(rest_group_data_idxs)
+
+    assert np.array([x.size > 0 for x in group_data_idxs]).all()
+
     return group_data_idxs
 
 
