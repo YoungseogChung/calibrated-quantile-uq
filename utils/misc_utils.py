@@ -1,5 +1,6 @@
 import tqdm
 import random
+import math
 import numpy as np
 from scipy.interpolate import interp1d
 import torch
@@ -71,6 +72,9 @@ def test_uq(model, x, y, exp_props, y_range, recal_model=None, recal_type=None,
     g_cali_scores = []
     if test_group_cal:
         ratio_arr = np.linspace(0.01, 1.0, 15)
+        print('Spanning group size from {} to {} in {} increments'.format(
+            np.min(ratio_arr), np.max(ratio_arr), len(ratio_arr)
+        ))
         for r in tqdm.tqdm(ratio_arr):
             gc = test_group_cali(
                 y=y, q_pred_mat=quantile_preds[:, idx_01:idx_99 + 1],
@@ -95,24 +99,34 @@ def test_group_cali(y, q_pred_mat, exp_props, y_range, ratio,
 
     # group_obs_props = []
     # group_sharp_scores = []
-    group_cali_scores = []
-    for g_idx in range(num_group_draws):
-        rand_idx = np.random.choice(num_pts, group_size, replace=False)
-        g_y = y[rand_idx]
-        g_q_preds = q_pred_mat[rand_idx, :]
-        g_obs_props = torch.mean((g_q_preds >= g_y).float(), dim=0).flatten()
-        assert exp_props.shape == g_obs_props.shape
-        g_cali_score = plot_calibration_curve(exp_props, g_obs_props,
-                                              make_plots=False)
-        # g_sharp_score = torch.mean(
-        #     g_q_preds[:,q_975_idx] - g_q_preds[:,q_025_idx]
-        # ).item() / y_range
+    score_per_trial = []
+    for _ in range(20):
+        ##########
+        group_cali_scores = []
+        for g_idx in range(num_group_draws):
+            rand_idx = np.random.choice(num_pts, group_size, replace=True)
+            g_y = y[rand_idx]
+            g_q_preds = q_pred_mat[rand_idx, :]
+            g_obs_props = torch.mean((g_q_preds >= g_y).float(), dim=0).flatten()
+            assert exp_props.shape == g_obs_props.shape
+            g_cali_score = plot_calibration_curve(exp_props, g_obs_props,
+                                                  make_plots=False)
+            # g_sharp_score = torch.mean(
+            #     g_q_preds[:,q_975_idx] - g_q_preds[:,q_025_idx]
+            # ).item() / y_range
 
-        group_cali_scores.append(g_cali_score)
-        # group_obs_props.append(g_obs_props)
-        # group_sharp_scores.append(g_sharp_score)
+            group_cali_scores.append(g_cali_score)
+            # group_obs_props.append(g_obs_props)
+            # group_sharp_scores.append(g_sharp_score)
 
-    mean_cali_score = np.mean(group_cali_scores)
+        # mean_cali_score = np.mean(group_cali_scores)
+        mean_cali_score = np.max(group_cali_scores)
+        ##########
+
+        score_per_trial.append(mean_cali_score)
+
+    return np.mean(score_per_trial)
+
     # mean_sharp_score = np.mean(group_sharp_scores)
     # mean_group_obs_props = torch.mean(torch.stack(group_obs_props, dim=0), dim=0)
     # mean_group_cali_score = plot_calibration_curve(exp_props, mean_group_obs_props,
@@ -135,13 +149,26 @@ def gather_loss_per_q(loss_fn, model, y, x, q_list, device, args):
     return loss
 
 
-def discretize_domain(x_arr, min_pts):
+def discretize_domain(x_arr, batch_size):
+    num_pts, dim_x = x_arr.shape
+
+    group_list = []
+    for d in range(dim_x):
+        dim_order = np.argsort(x_arr[:, d]).flatten()
+        curr_group = [dim_order[i:i + batch_size] for i in
+                      range(0, num_pts, batch_size)]
+        assert len(curr_group) == math.ceil(num_pts / batch_size)
+        group_list.append(curr_group)
+    return group_list
+
+
+def discretize_domain_old(x_arr, min_pts):
     num_pts, dim_x = x_arr.shape
     # n_bins = 2 * np.ones(dim_x).astype(int)
 
     group_data_idxs = []
     while len(group_data_idxs) < 1:
-        n_bins = np.random.randint(low=1, high=4, size=dim_x)
+        n_bins = np.random.randint(low=1, high=3, size=dim_x)
         H, edges = histogramdd(x_arr, bins=n_bins)
 
         group_idxs = np.where(H >= min_pts)
@@ -177,6 +204,8 @@ def discretize_domain(x_arr, min_pts):
             beg_idx = end_idx
         group_data_idxs.extend(rest_group_data_idxs)
     return group_data_idxs
+
+
 
 
 if __name__ == '__main__':
