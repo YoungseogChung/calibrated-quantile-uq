@@ -23,12 +23,8 @@ from losses import (
     batch_cali_loss,
     qr_loss,
     batch_qr_loss,
-    mod_cali_loss,
-    batch_mod_cali_loss,
     interval_loss,
     batch_interval_loss,
-    batch_diff_cali_loss,
-    batch_indv_cali_loss,
 )
 
 
@@ -51,18 +47,11 @@ def get_loss_fn(loss_name):
         "scaled_batch_cal_penalty",
     ]:
         fn = batch_cali_loss
-    elif loss_name in ["mod_cal", "scaled_mod_cal"]:
-        fn = mod_cali_loss
-    elif loss_name in ["batch_mod_cal", "scaled_batch_mod_cal"]:
-        fn = batch_mod_cali_loss
     elif loss_name == "int":
         fn = interval_loss
     elif loss_name == "batch_int":
         fn = batch_interval_loss
-    elif loss_name in ["batch_diff_cal", "batch_diff_cal_penalty"]:
-        fn = batch_diff_cali_loss
-    elif loss_name in ["batch_indv_cal", "batch_indv_cal_penalty"]:
-        fn = batch_indv_cali_loss
+
     else:
         raise ValueError("loss arg not valid")
 
