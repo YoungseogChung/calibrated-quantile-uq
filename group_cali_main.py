@@ -6,6 +6,8 @@ import numpy as np
 import pickle as pkl
 import tqdm
 import torch
+from torch.utils.data import DataLoader, TensorDataset
+import matplotlib.pyplot as plt
 from data.fetch_data import get_uci_data, get_toy_data, get_fusion_data
 from utils.misc_utils import (
     test_uq,
@@ -15,11 +17,6 @@ from utils.misc_utils import (
     gather_loss_per_q,
 )
 from recal import iso_recal
-from torch.utils.data import DataLoader, TensorDataset
-import matplotlib.pyplot as plt
-
-# sys.path.append('NNKit/')
-# from NNKit.models.model import vanilla_nn
 from utils.q_model_ens import QModelEns
 from losses import (
     cali_loss,
