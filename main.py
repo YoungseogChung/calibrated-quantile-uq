@@ -112,7 +112,8 @@ def parse_args():
         help="how long to wait for lower validation loss",
     )
 
-    parser.add_argument("--loss", type=str, help="specify type of loss")
+    parser.add_argument("--loss", type=str, default='scaled_batch_cal',
+                        help="specify type of loss")
 
     # only for cali losses
     parser.add_argument(
@@ -186,8 +187,7 @@ def parse_args():
 
 
 if __name__ == "__main__":
-    # DATA_NAMES = \
-    #     ['wine', 'naval', 'kin8nm', 'energy', 'yacht', 'concrete', 'power', 'boston']
+    # DATA_NAMES = ['wine', 'naval', 'kin8nm', 'energy', 'yacht', 'concrete', 'power', 'boston']
 
     args = parse_args()
 
