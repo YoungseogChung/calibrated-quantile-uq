@@ -25,8 +25,6 @@ from losses import (
     batch_qr_loss,
     mod_cali_loss,
     batch_mod_cali_loss,
-    crps_loss,
-    cov_loss,
     interval_loss,
     batch_interval_loss,
     batch_diff_cali_loss,
@@ -57,10 +55,6 @@ def get_loss_fn(loss_name):
         fn = mod_cali_loss
     elif loss_name in ["batch_mod_cal", "scaled_batch_mod_cal"]:
         fn = batch_mod_cali_loss
-    elif loss_name == "cov":
-        fn = cov_loss
-    elif loss_name == "batch_crps":
-        fn = crps_loss
     elif loss_name == "int":
         fn = interval_loss
     elif loss_name == "batch_int":
@@ -84,20 +78,15 @@ def parse_args():
     parser.add_argument(
         "--boot", type=int, default=0, help="1 to bootstrap samples"
     )
-
-    parser.add_argument("--seed", type=int, help="random seed")
+    parser.add_argument("--seed", type=int, default=0, help="random seed")
     parser.add_argument(
         "--data_dir",
         type=str,
         default="data/UCI_Datasets",
         help="parent directory of datasets",
     )
-    parser.add_argument("--data", type=str, help="dataset to use")
     parser.add_argument(
-        "--epist",
-        type=int,
-        default=0,
-        help="1 to switch train and test splits for epistemic uncertainty",
+        "--data", type=str, default='boston', help="dataset to use"
     )
     parser.add_argument(
         "--num_q",
@@ -108,7 +97,7 @@ def parse_args():
     parser.add_argument("--gpu", type=int, default=0, help="gpu num to use")
 
     parser.add_argument(
-        "--num_ep", type=int, default=10000, help="number of epochs"
+        "--num_ep", type=int, default=1000, help="number of epochs"
     )
     parser.add_argument("--nl", type=int, default=2, help="number of layers")
     parser.add_argument("--hs", type=int, default=64, help="hidden size")
@@ -130,7 +119,7 @@ def parse_args():
         "--penalty",
         dest="sharp_penalty",
         type=float,
-        help="coefficient for sharpness penalty; 0 for non",
+        help="coefficient for sharpness penalty; 0 for none",
     )
     parser.add_argument(
         "--rand_ref",
@@ -152,15 +141,16 @@ def parse_args():
         help="draw a group batch every # epochs",
     )
     parser.add_argument(
-        "--recal", type=int, default=1, help="1 to recalibrate afterwards"
+        "--recal", type=int, default=1, help="1 to recalibrate after training"
     )
     parser.add_argument(
         "--save_dir",
         type=str,
-        default="/zfsauton/project/public/ysc/uq_uci/all_default",
+        default="./",
         help="dir to save results",
     )
     parser.add_argument("--debug", type=int, default=0, help="1 to debug")
+
     args = parser.parse_args()
 
     if "penalty" in args.loss:
@@ -172,14 +162,6 @@ def parse_args():
     else:
         args.sharp_penalty = None
         args.sharp_all = None
-    # else:
-    #     if hasattr(args, 'sharp_penalty'):
-    #         delattr(args, 'sharp_penalty')
-    #     assert not hasattr(args, 'sharp_penalty')
-    #
-    #     if hasattr(args, 'sharp_all'):
-    #         delattr(args, 'sharp_all')
-    #     assert not hasattr(args, 'sharp_all')
 
     if args.rand_ref is not None:
         args.rand_ref = bool(args.rand_ref)
@@ -207,11 +189,6 @@ def parse_args():
 if __name__ == "__main__":
     # DATA_NAMES = \
     #     ['wine', 'naval', 'kin8nm', 'energy', 'yacht', 'concrete', 'power', 'boston']
-    DATA_NAMES = ["toy_mean_max"]
-    DATA_NAMES = ["yacht"]
-    # DATA_NAMES = ['']
-    SEEDS = [0, 1, 2, 3, 4]
-    # SEEDS = [0]
 
     args = parse_args()
 
@@ -219,7 +196,6 @@ if __name__ == "__main__":
 
     if args.debug:
         import pudb
-
         pudb.set_trace()
 
     if not os.path.exists(args.save_dir):
@@ -235,514 +211,440 @@ if __name__ == "__main__":
     per_seed_int_cali = []
     per_seed_model = []
 
-    for s in tqdm.tqdm(SEEDS):
-        args.seed = s
-        print(
-            "Drawing group batches every {}, penalty {}".format(
-                args.draw_group_every, args.sharp_penalty
+    print(
+        "Drawing group batches every {}, penalty {}".format(
+            args.draw_group_every, args.sharp_penalty
+        )
+    )
+
+    # Save file name
+    if "penalty" not in args.loss:
+        save_file_name = (
+            "{}/{}_loss{}_epist{}_ens{}_boot{}_seed{}.pkl".format(
+                args.save_dir,
+                args.data,
+                args.loss,
+                args.epist,
+                args.num_ens,
+                args.boot,
+                args.seed,
             )
         )
-
-        # Save file name
-        if "penalty" not in args.loss:
-            save_file_name = (
-                "{}/{}_loss{}_epist{}_ens{}_boot{}_seed{}.pkl".format(
-                    args.save_dir,
-                    args.data,
-                    args.loss,
-                    args.epist,
-                    args.num_ens,
-                    args.boot,
-                    args.seed,
-                )
+    else:
+        # penalizing sharpness
+        if args.sharp_all is not None and args.sharp_all:
+            save_file_name = "{}/{}_loss{}_pen{}_sharpall_epist{}_ens{}_boot{}_seed{}.pkl".format(
+                args.save_dir,
+                args.data,
+                args.loss,
+                args.sharp_penalty,
+                args.epist,
+                args.num_ens,
+                args.boot,
+                args.seed,
             )
-        else:
-            # penalizing sharpness
-            if args.sharp_all is not None and args.sharp_all:
-                save_file_name = "{}/{}_loss{}_pen{}_sharpall_epist{}_ens{}_boot{}_seed{}.pkl".format(
-                    args.save_dir,
-                    args.data,
-                    args.loss,
-                    args.sharp_penalty,
-                    args.epist,
-                    args.num_ens,
-                    args.boot,
-                    args.seed,
-                )
-            elif args.sharp_all is not None and not args.sharp_all:
-                save_file_name = "{}/{}_loss{}_pen{}_wideonly_epist{}_ens{}_boot{}_seed{}.pkl".format(
-                    args.save_dir,
-                    args.data,
-                    args.loss,
-                    args.sharp_penalty,
-                    args.epist,
-                    args.num_ens,
-                    args.boot,
-                    args.seed,
-                )
-        if os.path.exists(save_file_name):
-            print("skipping {}".format(save_file_name))
-            continue
-            sys.exit()
-
-        # Set seeds
-        set_seeds(args.seed)
-
-        # Fetching data
-        data_args = Namespace(
-            data_dir=args.data_dir, dataset=args.data, seed=args.seed
-        )
-
-        if "uci" in args.data_dir.lower():
-            data_out = get_uci_data(args)
-        elif "toy" in args.data_dir.lower():
-            data_out = get_toy_data(args)
-        else:
-            data_out = get_fusion_data(args)
-        x_tr, x_va, x_te, y_tr, y_va, y_te, y_al = (
-            data_out.x_tr,
-            data_out.x_va,
-            data_out.x_te,
-            data_out.y_tr,
-            data_out.y_va,
-            data_out.y_te,
-            data_out.y_al,
-        )
-        y_range = (y_al.max() - y_al.min()).item()
-        print("y range: {:.3f}".format(y_range))
-
-        if args.epist:
-            temp_x_tr, temp_y_tr = deepcopy(x_tr), deepcopy(y_tr)
-            x_tr, y_tr = x_te, y_te
-            x_te, y_te = temp_x_tr, temp_y_tr
-            assert ((x_tr.shape[0]) < x_te.shape[0]) and (
-                (y_tr.shape[0]) < y_te.shape[0]
+        elif args.sharp_all is not None and not args.sharp_all:
+            save_file_name = "{}/{}_loss{}_pen{}_wideonly_epist{}_ens{}_boot{}_seed{}.pkl".format(
+                args.save_dir,
+                args.data,
+                args.loss,
+                args.sharp_penalty,
+                args.epist,
+                args.num_ens,
+                args.boot,
+                args.seed,
             )
+    if os.path.exists(save_file_name):
+        print("skipping {}".format(save_file_name))
+        sys.exit()
 
-        # Making models
-        num_tr = x_tr.shape[0]
-        dim_x = x_tr.shape[1]
-        dim_y = y_tr.shape[1]
-        model_ens = QModelEns(
-            input_size=dim_x + 1,
-            output_size=dim_y,
-            hidden_size=args.hs,
-            num_layers=args.nl,
-            lr=args.lr,
-            wd=args.wd,
-            num_ens=args.num_ens,
-            device=args.device,
+    # Set seeds
+    set_seeds(args.seed)
+
+    # Fetching data
+    data_args = Namespace(
+        data_dir=args.data_dir, dataset=args.data, seed=args.seed
+    )
+
+    if "uci" in args.data_dir.lower():
+        data_out = get_uci_data(args)
+    elif "toy" in args.data_dir.lower():
+        data_out = get_toy_data(args)
+
+    x_tr, x_va, x_te, y_tr, y_va, y_te, y_al = (
+        data_out.x_tr,
+        data_out.x_va,
+        data_out.x_te,
+        data_out.y_tr,
+        data_out.y_va,
+        data_out.y_te,
+        data_out.y_al,
+    )
+    y_range = (y_al.max() - y_al.min()).item()
+    print("y range: {:.3f}".format(y_range))
+
+    # Making models
+    num_tr = x_tr.shape[0]
+    dim_x = x_tr.shape[1]
+    dim_y = y_tr.shape[1]
+    model_ens = QModelEns(
+        input_size=dim_x + 1,
+        output_size=dim_y,
+        hidden_size=args.hs,
+        num_layers=args.nl,
+        lr=args.lr,
+        wd=args.wd,
+        num_ens=args.num_ens,
+        device=args.device,
+    )
+
+    # Data loader
+    if not args.boot:
+        loader = DataLoader(
+            TensorDataset(x_tr, y_tr),
+            shuffle=True,
+            batch_size=args.bs,
         )
-
-        # Data loader
-        if not args.boot:
-            loader = DataLoader(
-                TensorDataset(x_tr, y_tr),
+    else:
+        rand_idx_list = [
+            np.random.choice(num_tr, size=num_tr, replace=True)
+            for _ in range(args.num_ens)
+        ]
+        loader_list = [
+            DataLoader(
+                TensorDataset(x_tr[idxs], y_tr[idxs]),
                 shuffle=True,
                 batch_size=args.bs,
             )
-        else:
-            rand_idx_list = [
-                np.random.choice(num_tr, size=num_tr, replace=True)
-                for _ in range(args.num_ens)
-            ]
-            loader_list = [
-                DataLoader(
-                    TensorDataset(x_tr[idxs], y_tr[idxs]),
-                    shuffle=True,
-                    batch_size=args.bs,
-                )
-                for idxs in rand_idx_list
-            ]
+            for idxs in rand_idx_list
+        ]
 
-        # Loss function
-        loss_fn = get_loss_fn(args.loss)
-        args.scale = True if "scale" in args.loss else False
-        batch_loss = True if "batch" in args.loss else False
+    # Loss function
+    loss_fn = get_loss_fn(args.loss)
+    args.scale = True if "scale" in args.loss else False
+    batch_loss = True if "batch" in args.loss else False
 
-        """ train loop """
-        tr_loss_list = []
-        va_loss_list = []
-        te_loss_list = []
+    """ train loop """
+    tr_loss_list = []
+    va_loss_list = []
+    te_loss_list = []
 
-        ##########
-        group_list = discretize_domain(x_tr.numpy(), args.bs)
-        curr_group_idx = 0
-        ##########
+    # setting batch groupings
+    group_list = discretize_domain(x_tr.numpy(), args.bs)
+    curr_group_idx = 0
 
-        for ep in tqdm.tqdm(range(args.num_ep)):
-            # for ep in (range(args.num_ep)):
+    for ep in tqdm.tqdm(range(args.num_ep)):
+        if model_ens.done_training:
+            print("Done training ens at EP {}".format(ep))
+            break
 
-            if model_ens.done_training:
-                print("Done training ens at EP {}".format(ep))
-                break
-
-            # Take train step
-            ep_train_loss = (
-                []
-            )  # list of losses from each batch, for one epoch
-            if not args.boot:
-                ##########
-                # if ep % args.draw_group_every == 0:
-                #     print(ep, 'group cali loss')
-                #     group_idxs = discretize_domain(x_tr.numpy(), args.bs)
-                #     for g_idx in group_idxs:
-                #         if len(g_idx) < 1: continue
-                #         xi = x_tr[g_idx.flatten()].to(args.device)
-                #         yi = y_tr[g_idx.flatten()].to(args.device)
-                ##########
-                if ep % args.draw_group_every == 0:
-                    # group cali
-                    group_idxs = group_list[curr_group_idx]
-                    curr_group_idx = (curr_group_idx + 1) % dim_x
-                    for g_idx in group_idxs:
-                        xi = x_tr[g_idx.flatten()].to(args.device)
-                        yi = y_tr[g_idx.flatten()].to(args.device)
-                        ##########
-                        q_list = torch.rand(args.num_q)
-                        loss = model_ens.loss(
-                            loss_fn,
-                            xi,
-                            yi,
-                            q_list,
-                            batch_q=batch_loss,
-                            take_step=True,
-                            args=args,
-                        )
-                        ep_train_loss.append(loss)
-                else:
-                    # just doing ordinary random batch
-                    for (xi, yi) in loader:
-                        xi, yi = xi.to(args.device), yi.to(args.device)
-                        q_list = torch.rand(args.num_q)
-                        loss = model_ens.loss(
-                            loss_fn,
-                            xi,
-                            yi,
-                            q_list,
-                            batch_q=batch_loss,
-                            take_step=True,
-                            args=args,
-                        )
-                        ep_train_loss.append(loss)
-            else:
-                for xi_yi_samp in zip(*loader_list):
-                    xi_list = [
-                        item[0].to(args.device) for item in xi_yi_samp
-                    ]
-                    yi_list = [
-                        item[1].to(args.device) for item in xi_yi_samp
-                    ]
-                    assert len(xi_list) == len(yi_list) == args.num_ens
+        # Take train step
+        # list of losses from each batch, for one epoch
+        ep_train_loss = []
+        if not args.boot:
+            if ep % args.draw_group_every == 0:
+                # drawing a group batch
+                group_idxs = group_list[curr_group_idx]
+                curr_group_idx = (curr_group_idx + 1) % dim_x
+                for g_idx in group_idxs:
+                    xi = x_tr[g_idx.flatten()].to(args.device)
+                    yi = y_tr[g_idx.flatten()].to(args.device)
                     q_list = torch.rand(args.num_q)
-                    loss = model_ens.loss_boot(
+                    loss = model_ens.loss(
                         loss_fn,
-                        xi_list,
-                        yi_list,
+                        xi,
+                        yi,
                         q_list,
                         batch_q=batch_loss,
                         take_step=True,
                         args=args,
                     )
                     ep_train_loss.append(loss)
-            ep_tr_loss = np.nanmean(
-                np.stack(ep_train_loss, axis=0), axis=0
-            )
-            tr_loss_list.append(ep_tr_loss)
-
-            # Validation loss
-            x_va, y_va = x_va.to(args.device), y_va.to(args.device)
-            va_te_q_list = torch.linspace(0.01, 0.99, 99)
-            ep_va_loss = model_ens.update_va_loss(
-                loss_fn,
-                x_va,
-                y_va,
-                va_te_q_list,
-                batch_q=batch_loss,
-                curr_ep=ep,
-                num_wait=args.wait,
-                args=args,
-            )
-            va_loss_list.append(ep_va_loss)
-
-            # Test loss
-            x_te, y_te = x_te.to(args.device), y_te.to(args.device)
-            with torch.no_grad():
-                ep_te_loss = model_ens.loss(
+            else:
+                # just doing ordinary random batch
+                for (xi, yi) in loader:
+                    xi, yi = xi.to(args.device), yi.to(args.device)
+                    q_list = torch.rand(args.num_q)
+                    loss = model_ens.loss(
+                        loss_fn,
+                        xi,
+                        yi,
+                        q_list,
+                        batch_q=batch_loss,
+                        take_step=True,
+                        args=args,
+                    )
+                    ep_train_loss.append(loss)
+        else:
+            # bootstrapped ensemble of models
+            for xi_yi_samp in zip(*loader_list):
+                xi_list = [
+                    item[0].to(args.device) for item in xi_yi_samp
+                ]
+                yi_list = [
+                    item[1].to(args.device) for item in xi_yi_samp
+                ]
+                assert len(xi_list) == len(yi_list) == args.num_ens
+                q_list = torch.rand(args.num_q)
+                loss = model_ens.loss_boot(
                     loss_fn,
-                    x_te,
-                    y_te,
-                    va_te_q_list,
+                    xi_list,
+                    yi_list,
+                    q_list,
                     batch_q=batch_loss,
-                    take_step=False,
+                    take_step=True,
                     args=args,
                 )
-            te_loss_list.append(ep_te_loss)
-
-            # # Printing some losses
-            # if (ep % 100 == 0) or (ep == args.num_ep-1):
-            #     print('EP:{}'.format(ep))
-            #     print('Train loss {}'.format(ep_tr_loss))
-            #     print('Val loss {}'.format(ep_va_loss))
-            #     print('Test loss {}'.format(ep_te_loss))
-
-        # Move everything to cpu
-        x_tr, y_tr, x_va, y_va, x_te, y_te = (
-            x_tr.cpu(),
-            y_tr.cpu(),
-            x_va.cpu(),
-            y_va.cpu(),
-            x_te.cpu(),
-            y_te.cpu(),
+                ep_train_loss.append(loss)
+        ep_tr_loss = np.nanmean(
+            np.stack(ep_train_loss, axis=0), axis=0
         )
-        model_ens.use_device(torch.device("cpu"))
+        tr_loss_list.append(ep_tr_loss)
 
-        # plt.plot(np.arange(len(tr_loss_list)) * 20, np.log(tr_loss_list), label='train')
-        # plt.plot(np.arange(len(va_loss_list)) * 20, np.log(va_loss_list), label='val')
-        # plt.plot(np.arange(len(te_loss_list)) * 20, np.log(te_loss_list), label='test')
-        # plt.legend()
-        # plt.show()
+        # Validation loss
+        x_va, y_va = x_va.to(args.device), y_va.to(args.device)
+        va_te_q_list = torch.linspace(0.01, 0.99, 99)
+        ep_va_loss = model_ens.update_va_loss(
+            loss_fn,
+            x_va,
+            y_va,
+            va_te_q_list,
+            batch_q=batch_loss,
+            curr_ep=ep,
+            num_wait=args.wait,
+            args=args,
+        )
+        va_loss_list.append(ep_va_loss)
 
-        # """ Test UQ on train """
-        # print('Testing UQ on train')
-        # tr_exp_props = torch.linspace(0.01, 0.99, 99)
-        # tr_cali_score, tr_sharp_score, tr_obs_props, tr_q_preds, _ = \
-        #     test_uq(model_ens, x_tr, y_tr, tr_exp_props, y_range,
-        #             recal_model=None, recal_type=None)
+        # Test loss
+        x_te, y_te = x_te.to(args.device), y_te.to(args.device)
+        with torch.no_grad():
+            ep_te_loss = model_ens.loss(
+                loss_fn,
+                x_te,
+                y_te,
+                va_te_q_list,
+                batch_q=batch_loss,
+                take_step=False,
+                args=args,
+            )
+        te_loss_list.append(ep_te_loss)
 
-        # """ Test UQ on val """
-        # print('Testing UQ on val')
-        # va_exp_props = torch.linspace(-2.0, 3.0, 501)
-        # va_cali_score, va_sharp_score, va_obs_props, va_q_preds, va_g_cali_scores = \
-        #     test_uq(model_ens, x_va, y_va, va_exp_props, y_range,
-        #             recal_model=None, recal_type=None, test_group_cal=True)
-        # reduced_va_q_preds = va_q_preds[:,
-        #     get_q_idx(va_exp_props, 0.01):get_q_idx(va_exp_props, 0.99)+1]
+        # Printing some losses
+        if (ep % 200 == 0) or (ep == args.num_ep-1):
+            print('EP:{}'.format(ep))
+            print('Train loss {}'.format(ep_tr_loss))
+            print('Val loss {}'.format(ep_va_loss))
+            print('Test loss {}'.format(ep_te_loss))
 
-        # import pudb; pudb.set_trace()
-        """Test UQ on test """
-        print("Testing UQ on test")
-        te_exp_props = torch.linspace(0.01, 0.99, 99)
+    # Finished training
+    # Move everything to cpu
+    x_tr, y_tr, x_va, y_va, x_te, y_te = (
+        x_tr.cpu(),
+        y_tr.cpu(),
+        x_va.cpu(),
+        y_va.cpu(),
+        x_te.cpu(),
+        y_te.cpu(),
+    )
+    model_ens.use_device(torch.device("cpu"))
+
+    # Test UQ on test
+    print("Testing UQ on test")
+    te_exp_props = torch.linspace(0.01, 0.99, 99)
+    (
+        te_cali_score,
+        te_sharp_score,
+        te_obs_props,
+        te_q_preds,
+        te_g_cali_scores,
+        te_scoring_rules,
+    ) = test_uq(
+        model_ens,
+        x_te,
+        y_te,
+        te_exp_props,
+        y_range,
+        recal_model=None,
+        recal_type=None,
+        test_group_cal=True,
+    )
+
+    te_cali_score
+    te_sharp_score
+    te_g_cali_scores
+    te_scoring_rules["crps"]
+    te_scoring_rules["nll"]
+    te_scoring_rules["check"]
+    te_scoring_rules["int"]
+    te_scoring_rules["int_cali"]
+    torch.device("cpu")
+    model_ens
+
+    # np.save('{}_{}_va_{}.npy'.format(
+    #     args.data, args.loss, args.draw_group_every),
+    #     va_g_cali_scores)
+    # np.save('{}_{}_te_{}.npy'.format(
+    #     args.data, args.loss, args.draw_group_every),
+    #     te_g_cali_scores)
+    #
+    # print('train', tr_cali_score, tr_sharp_score)
+    # print('val', va_cali_score, va_sharp_score)
+    print("\n")
+    print("-" * 80)
+    print(args.data)
+    print("Draw frequency:", args.draw_group_every)
+    print(
+        "Test Cali: {:.3f}, Sharp: {:.3f}".format(
+            te_cali_score, te_sharp_score
+        )
+    )
+    print(te_g_cali_scores[:5])
+    print(te_g_cali_scores[5:])
+    print(te_scoring_rules)
+    print("-" * 80)
+
+
+
+    if args.recal:
+        recal_model = iso_recal(va_exp_props, va_obs_props)
+        recal_exp_props = torch.linspace(0.01, 0.99, 99)
+
         (
-            te_cali_score,
-            te_sharp_score,
-            te_obs_props,
-            te_q_preds,
-            te_g_cali_scores,
-            te_scoring_rules,
+            recal_va_cali_score,
+            recal_va_sharp_score,
+            recal_va_obs_props,
+            recal_va_q_preds,
+            recal_va_g_cali_scores,
+        ) = test_uq(
+            model_ens,
+            x_va,
+            y_va,
+            recal_exp_props,
+            y_range,
+            recal_model=recal_model,
+            recal_type="sklearn",
+            test_group_cal=True,
+        )
+
+        (
+            recal_te_cali_score,
+            recal_te_sharp_score,
+            recal_te_obs_props,
+            recal_te_q_preds,
+            recal_te_g_cali_scores,
         ) = test_uq(
             model_ens,
             x_te,
             y_te,
-            te_exp_props,
+            recal_exp_props,
             y_range,
-            recal_model=None,
-            recal_type=None,
+            recal_model=recal_model,
+            recal_type="sklearn",
             test_group_cal=True,
         )
 
-        per_seed_cali.append(te_cali_score)
-        per_seed_sharp.append(te_sharp_score)
-        per_seed_gcali.append(te_g_cali_scores)
-        per_seed_crps.append(te_scoring_rules["crps"])
-        per_seed_nll.append(te_scoring_rules["nll"])
-        per_seed_check.append(te_scoring_rules["check"])
-        per_seed_int.append(te_scoring_rules["int"])
-        per_seed_int_cali.append(te_scoring_rules["int_cali"])
-        model_ens.use_device(torch.device("cpu"))
-        per_seed_model.append(model_ens)
-
-        # np.save('{}_{}_va_{}.npy'.format(
-        #     args.data, args.loss, args.draw_group_every),
-        #     va_g_cali_scores)
-        # np.save('{}_{}_te_{}.npy'.format(
-        #     args.data, args.loss, args.draw_group_every),
-        #     te_g_cali_scores)
-        #
-        # print('train', tr_cali_score, tr_sharp_score)
-        # print('val', va_cali_score, va_sharp_score)
-        print("\n")
-        print("-" * 80)
-        print(args.data)
-        print("Draw frequency:", gdp)
-        print(
-            "Test Cali: {:.3f}, Sharp: {:.3f}".format(
-                te_cali_score, te_sharp_score
-            )
+        (
+            recal_tr_cali_score,
+            recal_tr_sharp_score,
+            recal_tr_obs_props,
+            recal_tr_q_preds,
+            _,
+        ) = test_uq(
+            model_ens,
+            x_tr,
+            y_tr,
+            recal_exp_props,
+            y_range,
+            recal_model=recal_model,
+            recal_type="sklearn",
         )
-        print(te_g_cali_scores[:5])
-        print(te_g_cali_scores[5:])
-        print(te_scoring_rules)
-        print("-" * 80)
 
-        # if np.mean(te_g_cali_scores[-5:] <= 0.1):
-        #     print('FOUND!!!')
-
-        # ### plotting prediction intervals just for sanity check
-        # if 'toy' in args.data_dir:
-        #     x_list = [x_tr.cpu().numpy(), x_va.cpu().numpy(), x_te.cpu().numpy()]
-        #     y_list = [y_tr.cpu().numpy(), y_va.cpu().numpy(), y_te.cpu().numpy()]
-        #     pred_mat_list = [tr_q_preds, reduced_va_q_preds, te_q_preds]
-        #     for (x_arr, y_arr, pred_mat) in zip(x_list, y_list, pred_mat_list):
-        #         for i in [1, 4, 10, 25, 50, 75, 90, 94, 97]:
-        #             plt.plot(x_arr, pred_mat[:, i], linewidth=1)
-        #         plt.scatter(x_arr, y_arr, s=0.5)
-        #         plt.show()
-        # else:
-        #     tr_order = np.argsort(y_tr.cpu().numpy().flatten())
-        #     va_order = np.argsort(y_va.cpu().numpy().flatten())
-        #     te_order = np.argsort(y_te.cpu().numpy().flatten())
-        #     y_arr_list = [y_tr.cpu().numpy(), y_va.cpu().numpy(),
-        #                   y_te.cpu().numpy()]
-        #     y_order_list = [tr_order, va_order, te_order]
-        #     pred_mat_list = [tr_q_preds, reduced_va_q_preds, te_q_preds]
-        #     for (y_arr, y_order, pred_mat) in zip(y_arr_list, y_order_list, pred_mat_list):
-        #         for i in np.arange(1, 100, 24):
-        #             plt.plot(pred_mat[:, i][y_order], linewidth=0.5)
-        #         plt.plot(y_arr[y_order], '--', linewidth=2)
-        #         plt.show()
-        # ###
-        continue
-
-        if args.recal:
-            recal_model = iso_recal(va_exp_props, va_obs_props)
-            recal_exp_props = torch.linspace(0.01, 0.99, 99)
-
-            (
-                recal_va_cali_score,
-                recal_va_sharp_score,
-                recal_va_obs_props,
-                recal_va_q_preds,
-                recal_va_g_cali_scores,
-            ) = test_uq(
-                model_ens,
-                x_va,
-                y_va,
-                recal_exp_props,
-                y_range,
-                recal_model=recal_model,
-                recal_type="sklearn",
-                test_group_cal=True,
-            )
-
-            (
-                recal_te_cali_score,
-                recal_te_sharp_score,
-                recal_te_obs_props,
-                recal_te_q_preds,
-                recal_te_g_cali_scores,
-            ) = test_uq(
-                model_ens,
-                x_te,
-                y_te,
-                recal_exp_props,
-                y_range,
-                recal_model=recal_model,
-                recal_type="sklearn",
-                test_group_cal=True,
-            )
-
-            (
-                recal_tr_cali_score,
-                recal_tr_sharp_score,
-                recal_tr_obs_props,
-                recal_tr_q_preds,
-                _,
-            ) = test_uq(
-                model_ens,
-                x_tr,
-                y_tr,
-                recal_exp_props,
-                y_range,
-                recal_model=recal_model,
-                recal_type="sklearn",
-            )
-
-        save_dic = {
-            "tr_loss_list": tr_loss_list,  # loss lists
-            "va_loss_list": va_loss_list,
-            "te_loss_list": te_loss_list,
-            "tr_cali_score": tr_cali_score,  # test on tr
-            "tr_sharp_score": tr_sharp_score,
-            "tr_exp_props": tr_exp_props,
-            "tr_obs_props": tr_obs_props,
-            "tr_q_preds": tr_q_preds,
-            "va_cali_score": va_cali_score,  # test on va
-            "va_sharp_score": va_sharp_score,
-            "va_exp_props": va_exp_props,
-            "va_obs_props": va_obs_props,
-            "va_q_preds": va_q_preds,
-            "te_cali_score": te_cali_score,  # test on te
-            "te_sharp_score": te_sharp_score,
-            "te_exp_props": te_exp_props,
-            "te_obs_props": te_obs_props,
-            "te_q_preds": te_q_preds,
-            "recal_model": recal_model,
-            "recal_exp_props": recal_exp_props,
-            "recal_tr_cali_score": recal_tr_cali_score,
-            "recal_tr_sharp_score": recal_tr_sharp_score,
-            "recal_tr_obs_props": recal_tr_obs_props,
-            "recal_tr_q_preds": recal_tr_q_preds,
-            "recal_va_cali_score": recal_va_cali_score,
-            "recal_va_sharp_score": recal_va_sharp_score,
-            "recal_va_obs_props": recal_va_obs_props,
-            "recal_va_q_preds": recal_va_q_preds,
-            "recal_te_cali_score": recal_te_cali_score,
-            "recal_te_sharp_score": recal_te_sharp_score,
-            "recal_te_obs_props": recal_te_obs_props,
-            "recal_te_q_preds": recal_te_q_preds,
-            "te_g_cali_scores": te_g_cali_scores,
-            "recal_va_g_cali_scores": recal_va_g_cali_scores,
-            "recal_te_g_cali_scores": recal_te_g_cali_scores,
-            "x_va": x_va,
-            "y_va": y_va,
-            "x_te": x_te,
-            "y_te": y_te,
-            "args": args,
-            "model": model_ens,
-        }
-
-        break
-        # with open(save_file_name, 'wb') as pf:
-        #     pkl.dump(save_dic, pf)
-
-    print("Cali: {}".format(np.mean(per_seed_cali)))
-    print("Sharp: {}".format(np.mean(per_seed_sharp)))
-    print("NLL: {}".format(np.mean(per_seed_nll)))
-    print("CRPS: {}".format(np.mean(per_seed_crps)))
-    print("Check: {}".format(np.mean(per_seed_check)))
-    print("Int: {}".format(np.mean(per_seed_int)))
-    print("Int-Cali: {}".format(np.mean(per_seed_int_cali)))
-    mean_gcali = np.mean(np.stack(per_seed_gcali, axis=0), axis=0)
-    print(mean_gcali[:5])
-    print(mean_gcali[5:])
-
-    save_package = {
+    save_dic = {
+        "tr_loss_list": tr_loss_list,  # loss lists
+        "va_loss_list": va_loss_list,
+        "te_loss_list": te_loss_list,
+        "tr_cali_score": tr_cali_score,  # test on tr
+        "tr_sharp_score": tr_sharp_score,
+        "tr_exp_props": tr_exp_props,
+        "tr_obs_props": tr_obs_props,
+        "tr_q_preds": tr_q_preds,
+        "va_cali_score": va_cali_score,  # test on va
+        "va_sharp_score": va_sharp_score,
+        "va_exp_props": va_exp_props,
+        "va_obs_props": va_obs_props,
+        "va_q_preds": va_q_preds,
+        "te_cali_score": te_cali_score,  # test on te
+        "te_sharp_score": te_sharp_score,
+        "te_exp_props": te_exp_props,
+        "te_obs_props": te_obs_props,
+        "te_q_preds": te_q_preds,
+        "recal_model": recal_model,
+        "recal_exp_props": recal_exp_props,
+        "recal_tr_cali_score": recal_tr_cali_score,
+        "recal_tr_sharp_score": recal_tr_sharp_score,
+        "recal_tr_obs_props": recal_tr_obs_props,
+        "recal_tr_q_preds": recal_tr_q_preds,
+        "recal_va_cali_score": recal_va_cali_score,
+        "recal_va_sharp_score": recal_va_sharp_score,
+        "recal_va_obs_props": recal_va_obs_props,
+        "recal_va_q_preds": recal_va_q_preds,
+        "recal_te_cali_score": recal_te_cali_score,
+        "recal_te_sharp_score": recal_te_sharp_score,
+        "recal_te_obs_props": recal_te_obs_props,
+        "recal_te_q_preds": recal_te_q_preds,
+        "te_g_cali_scores": te_g_cali_scores,
+        "recal_va_g_cali_scores": recal_va_g_cali_scores,
+        "recal_te_g_cali_scores": recal_te_g_cali_scores,
+        "x_va": x_va,
+        "y_va": y_va,
+        "x_te": x_te,
+        "y_te": y_te,
         "args": args,
-        "per_seed_cali": per_seed_cali,
-        "per_seed_sharp": per_seed_sharp,
-        "per_seed_gcali": per_seed_gcali,
-        "per_seed_crps": per_seed_crps,
-        "per_seed_nll": per_seed_nll,
-        "per_seed_check": per_seed_check,
-        "per_seed_int": per_seed_int,
-        "per_seed_int_cali": per_seed_int_cali,
-        "per_seed_model": per_seed_model,
+        "model": model_ens,
     }
-    if "scaled_batch_cal" in args.loss:
-        label = "sbcp"
-    elif "batch_cal" in args.loss:
-        label = "bcp"
-    elif "int" in args.loss:
-        label = "int"
-    elif "qr" in args.loss:
-        label = "qr"
-    else:
-        label = args.loss
 
-    save_name = "{}_{}{}_gd{}.pkl".format(
-        args.data, label, args.sharp_penalty, args.draw_group_every
-    )
+    break
+    # with open(save_file_name, 'wb') as pf:
+    #     pkl.dump(save_dic, pf)
+
+    # print("Cali: {}".format(np.mean(per_seed_cali)))
+    # print("Sharp: {}".format(np.mean(per_seed_sharp)))
+    # print("NLL: {}".format(np.mean(per_seed_nll)))
+    # print("CRPS: {}".format(np.mean(per_seed_crps)))
+    # print("Check: {}".format(np.mean(per_seed_check)))
+    # print("Int: {}".format(np.mean(per_seed_int)))
+    # print("Int-Cali: {}".format(np.mean(per_seed_int_cali)))
+    # mean_gcali = np.mean(np.stack(per_seed_gcali, axis=0), axis=0)
+    # print(mean_gcali[:5])
+    # print(mean_gcali[5:])
+    #
+    # save_package = {
+    #     "args": args,
+    #     "per_seed_cali": per_seed_cali,
+    #     "per_seed_sharp": per_seed_sharp,
+    #     "per_seed_gcali": per_seed_gcali,
+    #     "per_seed_crps": per_seed_crps,
+    #     "per_seed_nll": per_seed_nll,
+    #     "per_seed_check": per_seed_check,
+    #     "per_seed_int": per_seed_int,
+    #     "per_seed_int_cali": per_seed_int_cali,
+    #     "per_seed_model": per_seed_model,
+    # }
+    # if "scaled_batch_cal" in args.loss:
+    #     label = "sbcp"
+    # elif "batch_cal" in args.loss:
+    #     label = "bcp"
+    # elif "int" in args.loss:
+    #     label = "int"
+    # elif "qr" in args.loss:
+    #     label = "qr"
+    # else:
+    #     label = args.loss
+    #
+    # save_name = "{}_{}{}_gd{}.pkl".format(
+    #     args.data, label, args.sharp_penalty, args.draw_group_every
+    # )
 
     import pdb
 

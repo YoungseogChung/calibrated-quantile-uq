@@ -97,33 +97,7 @@ def batch_cali_loss(model, y, x, q_list, device, args):
 
     cov_under = coverage < q_list.to(device)
     cov_over = ~cov_under
-
-    # handle random references
-    if args.rand_ref is not None and args.rand_ref:
-        # ### actual rand ref
-        # loss_per_q = []
-        # import pudb; pudb.set_trace()
-        # for q_idx in range(num_q):
-        #     curr_cov_diff = q_list[q_idx].item() - coverage[q_idx].item()
-        #     num_perturb_pts = int(round(np.abs(curr_cov_diff * num_pts)))
-        #     rand_idxs = np.random.choice(num_pts, num_perturb_pts, replace=False)
-        #     if len(rand_idxs) < 1:
-        #         loss_per_q.append(torch.tensor(0.0).to(device))
-        #         continue
-        #     curr_loss = np.sign(curr_cov_diff) * diff_mat[q_idx, rand_idxs]
-        #     if not torch.isfinite(torch.mean(curr_loss)):
-        #         pudb.set_trace()
-        #     loss_per_q.append(torch.mean(curr_loss))
-        # loss_list = torch.stack(loss_per_q)
-        # ###
-        import pudb
-
-        pudb.set_trace()
-        loss_list = (cov_under * (-1 * mean_diff_under)) + (
-            cov_over * (-1 * mean_diff_over)
-        )
-    else:
-        loss_list = (cov_under * mean_diff_over) + (cov_over * mean_diff_under)
+    loss_list = (cov_under * mean_diff_over) + (cov_over * mean_diff_under)
 
     # handle scaling
     if args.scale is not None and args.scale:
@@ -423,11 +397,6 @@ def batch_mod_cali_loss(model, y, x, q_list, device, args):
     pred_y_mat = pred_y.reshape(num_q, num_pts)
     diff_mat = y_mat - pred_y_mat
 
-    # mean_diff_under = torch.sum(-1 * diff_mat * idx_under, dim=1) / \
-    #                   torch.sum(idx_under, dtype=float, dim=1)
-    # mean_diff_over = torch.sum(diff_mat * idx_over, dim=1) / \
-    #                  torch.sum(idx_over, dtype=float, dim=1)
-
     mean_diff_under = torch.mean(-1 * diff_mat, dim=1)
     mean_diff_over = torch.mean(diff_mat, dim=1)
 
@@ -526,37 +495,6 @@ def crps_loss(model, y, x, q_list, device, args):
     pred_y = model(model_in)
     sq_diff = (pred_y - y_stacked) ** 2
     loss = torch.mean(sq_diff)
-    # abs_diff = torch.abs(pred_y - y_stacked)
-    # crps_per_pt = torch.mean(abs_diff, dism=1)
-    # mean_crps = torch.mean(crps_per_pt)
-
-    return loss
-
-
-def cov_loss(model, y, x, q, device, args):
-    """
-    setting the loss to just be the difference in coverage
-
-    NOTE: no traceable gradient in loss
-    """
-
-    num_pts = y.size(0)
-    if x is None:
-        q_tensor = torch.Tensor([q]).to(device)
-        pred_y = model(q_tensor)
-    else:
-        q_tensor = q * torch.ones(num_pts).view(-1, 1).to(device)
-        pred_y = model(torch.cat([x, q_tensor], dim=1))
-
-    idx_under = y <= pred_y
-    idx_over = ~idx_under
-    coverage = torch.mean(idx_under.float())
-
-    loss = (coverage - q) ** 2
-    # if coverage < q:
-    #     loss = torch.mean((y - pred_y)[idx_over])
-    # else:
-    #     loss = torch.mean((pred_y - y)[idx_under])
 
     return loss
 
