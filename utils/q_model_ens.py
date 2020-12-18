@@ -3,6 +3,7 @@ from copy import deepcopy
 import tqdm
 import numpy as np
 import torch
+
 # sys.path.append('../utils/NNKit')
 # sys.path.append('utils')
 from scipy.stats import norm as norm_distr
@@ -16,13 +17,16 @@ from NNKit.models.model import vanilla_nn
 Define wrapper uq_model class
 All uq models will import this class
 """
-class uq_model(object):
 
+
+class uq_model(object):
     def predict(self):
-        raise NotImplementedError('Abstract Method')
+        raise NotImplementedError("Abstract Method")
 
 
 """ QModelEns Utils """
+
+
 def gather_loss_per_q(loss_fn, model, y, x, q_list, device, args):
     loss_list = []
     for q in q_list:
@@ -54,10 +58,9 @@ def get_ens_pred_interp(unc_preds, taus, fidelity=10000):
                     continue
                 xs.append(targets[idx])
                 ys.append(taus[idx])
-            intr = interp1d(xs, ys,
-                            kind='linear',
-                            fill_value=([0], [1]),
-                            bounds_error=False)
+            intr = interp1d(
+                xs, ys, kind="linear", fill_value=([0], [1]), bounds_error=False
+            )
             x_cdf.append(intr(y_grid))
         x_cdf = np.asarray(x_cdf)
         avg_cdf = np.mean(x_cdf, axis=0)
@@ -77,7 +80,7 @@ def get_ens_pred_interp(unc_preds, taus, fidelity=10000):
     return np.asarray(new_quants).T
 
 
-def get_ens_pred_conf_bound(unc_preds, taus, conf_level=0.95, score_distr='z'):
+def get_ens_pred_conf_bound(unc_preds, taus, conf_level=0.95, score_distr="z"):
     """
     unc_preds 3D ndarray (ens_size, num_tau, num_x)
     where for each ens_member, each row corresonds to tau 0.01, 0.02...
@@ -89,39 +92,55 @@ def get_ens_pred_conf_bound(unc_preds, taus, conf_level=0.95, score_distr='z'):
     mean_pred = np.mean(unc_preds, axis=0)
     std_pred = np.std(unc_preds, axis=0, ddof=1)
     stderr_pred = std_pred / np.sqrt(num_ens)
-    alpha = (1 - conf_level) # is (1-C)
+    alpha = 1 - conf_level  # is (1-C)
 
     # determine coefficient
-    if score_distr == 'z':
-        crit_value = norm_distr.ppf(1- (0.5 * alpha))
-    elif score_distr == 't':
-        crit_value = t_distr.ppf(q=1- (0.5 * alpha), df=(num_ens-1))
+    if score_distr == "z":
+        crit_value = norm_distr.ppf(1 - (0.5 * alpha))
+    elif score_distr == "t":
+        crit_value = t_distr.ppf(q=1 - (0.5 * alpha), df=(num_ens - 1))
     else:
-        raise ValueError('score_distr must be one of z or t')
+        raise ValueError("score_distr must be one of z or t")
 
     gt_med = (taus > 0.5).reshape(-1, num_x)
     lt_med = ~gt_med
     assert gt_med.shape == mean_pred.shape == stderr_pred.shape
-    out = (lt_med * (mean_pred - (float(crit_value) * stderr_pred)) +
-           gt_med * (mean_pred + (float(crit_value) * stderr_pred))).T
+    out = (
+        lt_med * (mean_pred - (float(crit_value) * stderr_pred))
+        + gt_med * (mean_pred + (float(crit_value) * stderr_pred))
+    ).T
     out = torch.from_numpy(out)
     return out
 
 
 class QModelEns(uq_model):
-
-    def __init__(self, input_size, output_size, hidden_size, num_layers, lr, wd,
-                 num_ens, device):
+    def __init__(
+        self,
+        input_size,
+        output_size,
+        hidden_size,
+        num_layers,
+        lr,
+        wd,
+        num_ens,
+        device,
+    ):
 
         self.num_ens = num_ens
         self.device = device
-        self.model = [vanilla_nn(input_size=input_size, output_size=output_size,
-                                 hidden_size=hidden_size,
-                                 num_layers=num_layers).to(device)
-                      for _ in range(num_ens)]
-        self.optimizers = [torch.optim.Adam(x.parameters(),
-                                            lr=lr, weight_decay=wd)
-                           for x in self.model]
+        self.model = [
+            vanilla_nn(
+                input_size=input_size,
+                output_size=output_size,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+            ).to(device)
+            for _ in range(num_ens)
+        ]
+        self.optimizers = [
+            torch.optim.Adam(x.parameters(), lr=lr, weight_decay=wd)
+            for x in self.model
+        ]
         self.keep_training = [True for _ in range(num_ens)]
         self.best_va_loss = [np.inf for _ in range(num_ens)]
         self.best_va_model = [None for _ in range(num_ens)]
@@ -133,7 +152,7 @@ class QModelEns(uq_model):
         for idx in range(len(self.best_va_model)):
             self.best_va_model[idx] = self.best_va_model[idx].to(device)
 
-        if device.type == 'cuda':
+        if device.type == "cuda":
             for idx in range(len(self.best_va_model)):
                 assert next(self.best_va_model[idx].parameters()).is_cuda
 
@@ -141,9 +160,9 @@ class QModelEns(uq_model):
         device_list = []
         for idx in range(len(self.best_va_model)):
             if next(self.best_va_model[idx].parameters()).is_cuda:
-                device_list.append('cuda')
+                device_list.append("cuda")
             else:
-                device_list.append('cpu')
+                device_list.append("cpu")
         print(device_list)
 
     def loss(self, loss_fn, x, y, q_list, batch_q, take_step, args):
@@ -152,10 +171,19 @@ class QModelEns(uq_model):
             self.optimizers[idx].zero_grad()
             if self.keep_training[idx]:
                 if batch_q:
-                    loss = loss_fn(self.model[idx], y, x, q_list, self.device, args)
+                    loss = loss_fn(
+                        self.model[idx], y, x, q_list, self.device, args
+                    )
                 else:
-                    loss = gather_loss_per_q(loss_fn, self.model[idx], y, x,
-                                             q_list, self.device, args)
+                    loss = gather_loss_per_q(
+                        loss_fn,
+                        self.model[idx],
+                        y,
+                        x,
+                        q_list,
+                        self.device,
+                        args,
+                    )
                 ens_loss.append(loss.item())
 
                 if take_step:
@@ -166,18 +194,32 @@ class QModelEns(uq_model):
 
         return np.asarray(ens_loss)
 
-    def loss_boot(self, loss_fn, x_list, y_list, q_list, batch_q, take_step, args):
+    def loss_boot(
+        self, loss_fn, x_list, y_list, q_list, batch_q, take_step, args
+    ):
         ens_loss = []
         for idx in range(self.num_ens):
             self.optimizers[idx].zero_grad()
             if self.keep_training[idx]:
                 if batch_q:
-                    loss = loss_fn(self.model[idx], y_list[idx], x_list[idx], 
-                                   q_list, self.device, args)
+                    loss = loss_fn(
+                        self.model[idx],
+                        y_list[idx],
+                        x_list[idx],
+                        q_list,
+                        self.device,
+                        args,
+                    )
                 else:
-                    loss = gather_loss_per_q(loss_fn, self.model[idx], 
-                               y_list[idx], x_list[idx], q_list, 
-                               self.device, args)
+                    loss = gather_loss_per_q(
+                        loss_fn,
+                        self.model[idx],
+                        y_list[idx],
+                        x_list[idx],
+                        q_list,
+                        self.device,
+                        args,
+                    )
                 ens_loss.append(loss.item())
 
                 if take_step:
@@ -188,9 +230,13 @@ class QModelEns(uq_model):
 
         return np.asarray(ens_loss)
 
-    def update_va_loss(self, loss_fn, x, y, q_list, batch_q, curr_ep, num_wait, args):
+    def update_va_loss(
+        self, loss_fn, x, y, q_list, batch_q, curr_ep, num_wait, args
+    ):
         with torch.no_grad():
-            va_loss = self.loss(loss_fn, x, y, q_list, batch_q, take_step=False, args=args)
+            va_loss = self.loss(
+                loss_fn, x, y, q_list, batch_q, take_step=False, args=args
+            )
 
         for idx in range(self.num_ens):
             if self.keep_training[idx]:
@@ -200,8 +246,12 @@ class QModelEns(uq_model):
                     self.best_va_model[idx] = deepcopy(self.model[idx])
                 else:
                     if curr_ep - self.best_va_ep[idx] > num_wait:
-                        print('Val loss stagnate for {}, model {}'.format(num_wait, idx))
-                        print('EP {}'.format(curr_ep))
+                        print(
+                            "Val loss stagnate for {}, model {}".format(
+                                num_wait, idx
+                            )
+                        )
+                        print("EP {}".format(curr_ep))
                         self.keep_training[idx] = False
 
         if not any(self.keep_training):
@@ -209,10 +259,15 @@ class QModelEns(uq_model):
 
         return va_loss
 
-
     #####
-    def predict(self, cdf_in, conf_level=0.95, score_distr='z',
-                 recal_model=None, recal_type=None):
+    def predict(
+        self,
+        cdf_in,
+        conf_level=0.95,
+        score_distr="z",
+        recal_model=None,
+        recal_type=None,
+    ):
         """
         Only pass in cdf_in into model and return output
         If self is an ensemble, return a conservative output based on conf_bound
@@ -235,17 +290,27 @@ class QModelEns(uq_model):
                 with torch.no_grad():
                     pred_list.append(m(cdf_in).T.unsqueeze(0))
 
-            unc_preds = torch.cat(pred_list, dim=0).detach().cpu().numpy()  # shape (num_ens, num_x, 1)
+            unc_preds = (
+                torch.cat(pred_list, dim=0).detach().cpu().numpy()
+            )  # shape (num_ens, num_x, 1)
             taus = cdf_in[:, -1].flatten().cpu().numpy()
-            pred = get_ens_pred_conf_bound(unc_preds, taus, conf_level=0.95,
-                                           score_distr='z')
+            pred = get_ens_pred_conf_bound(
+                unc_preds, taus, conf_level=0.95, score_distr="z"
+            )
             pred = pred.to(cdf_in.device)
 
         return pred
+
     #####
 
-    def predict_q(self, x, q_list=None, ens_pred_type='conf',
-                recal_model=None, recal_type=None):
+    def predict_q(
+        self,
+        x,
+        q_list=None,
+        ens_pred_type="conf",
+        recal_model=None,
+        recal_type=None,
+    ):
         """
         Get output for given list of quantiles
 
@@ -264,12 +329,12 @@ class QModelEns(uq_model):
 
         if self.num_ens > 1:
             # choose function to make ens predictions
-            if ens_pred_type == 'conf':
+            if ens_pred_type == "conf":
                 ens_pred_fn = get_ens_pred_conf_bound
-            elif ens_pred_type == 'interp':
+            elif ens_pred_type == "interp":
                 ens_pred_fn = get_ens_pred_interp
             else:
-                raise ValueError('ens_pred_type must be one of conf or interp')
+                raise ValueError("ens_pred_type must be one of conf or interp")
 
         num_x = x.shape[0]
         num_q = q_list.shape[0]
@@ -277,14 +342,14 @@ class QModelEns(uq_model):
         cdf_preds = []
         for p in q_list:
             if recal_model is not None:
-                if recal_type == 'torch':
+                if recal_type == "torch":
                     recal_model.cpu()  # keep recal model on cpu
                     with torch.no_grad():
                         in_p = recal_model(p.reshape(1, -1)).item()
-                elif recal_type == 'sklearn':
+                elif recal_type == "sklearn":
                     in_p = float(recal_model.predict(p.flatten()))
                 else:
-                    raise ValueError('recal_type incorrect')
+                    raise ValueError("recal_type incorrect")
             else:
                 in_p = float(p)
             p_tensor = (in_p * torch.ones(num_x)).reshape(-1, 1)
@@ -331,14 +396,14 @@ class QModelEns(uq_model):
         # ###
 
 
-
-
-
-
-
-
-
-if __name__=='__main__':
-    temp_model = QModelEns(input_size=1, output_size=1, hidden_size=10,
-                           num_layers=2, lr=0.01, wd=0.0, num_ens=5,
-                           device=torch.device('cuda:0'))
+if __name__ == "__main__":
+    temp_model = QModelEns(
+        input_size=1,
+        output_size=1,
+        hidden_size=10,
+        num_layers=2,
+        lr=0.01,
+        wd=0.0,
+        num_ens=5,
+        device=torch.device("cuda:0"),
+    )

@@ -1,10 +1,11 @@
 import numpy as np
 from scipy.interpolate import interp1d
 
+
 def get_uncertainty_prediction(unc_preds):
     """unc_preds 2D ndarray (99, num_x) where each row
-       corresonds to tau 0.01, 0.02... and the columns
-       are for the set of x being predicted over.
+    corresonds to tau 0.01, 0.02... and the columns
+    are for the set of x being predicted over.
     """
     taus = np.arange(0.01, 1, 0.01)
     y_min, y_max = np.min(unc_preds), np.max(unc_preds)
@@ -21,9 +22,9 @@ def get_uncertainty_prediction(unc_preds):
                     continue
                 xs.append(targets[idx])
                 ys.append(taus[idx])
-            intr = interp1d(xs, ys, kind='linear',
-                    fill_value=([0], [1]),
-                    bounds_error=False)
+            intr = interp1d(
+                xs, ys, kind="linear", fill_value=([0], [1]), bounds_error=False
+            )
             x_cdf.append(intr(y_grid))
         x_cdf = np.asarray(x_cdf)
         avg_cdf = np.mean(x_cdf, axis=0)
