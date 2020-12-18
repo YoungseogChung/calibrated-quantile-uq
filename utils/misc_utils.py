@@ -133,11 +133,11 @@ def test_uq(
     curr_int_cali = torch.mean(torch.abs(int_exp_props - int_obs_props)).item()
 
     curr_scoring_rules = {
-        "crps": curr_crps,
-        "nll": curr_nll,
-        "check": curr_check,
-        "int": curr_int,
-        "int_cali": curr_int_cali,
+        "crps": float(curr_crps),
+        "nll": float(curr_nll),
+        "check": float(curr_check),
+        "int": float(curr_int),
+        "int_cali": float(curr_int_cali),
     }
 
     return (
